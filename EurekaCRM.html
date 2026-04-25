@@ -790,6 +790,10 @@ input,textarea,select,button{font-family:'Poppins',sans-serif!important;}
 .mobile-grid1{grid-template-columns:1fr!important;}
 .mobile-p{padding:16px!important;}
 .mobile-text-sm{font-size:14px!important;}
+.modal-box{padding:18px 16px!important;border-radius:10px!important;}
+}
+@media(min-width:768px) and (max-width:1023px){
+.modal-box{padding:22px 24px!important;}
 }
 @media(min-width:768px){
 .mobile-only{display:none!important;}
@@ -2027,8 +2031,8 @@ const getTargetAgent=(agId,dateDebut)=>{
   const essai=getEssai(dateDebut);
   const m=Math.min(essai.moisEcoules,2);// 0=M1(<1 mois)=2000, 1=M2=4000, 2=M3+=6000
   const key=`${agId}_m${m+1}`;
-  if(objectifs[key]!==undefined) return objectifs[key];
-  // Pas de fallback sur objectifs[agId] (ancien format) — évite les valeurs résiduelles Supabase
+  // objectifs[key]>0 évite qu'une valeur 0 sauvegardée par erreur écrase le défaut
+  if(objectifs[key]>0) return objectifs[key];
   return (regles.targetsEssai||TARGETS_ESSAI)[m];
 };
 // ─── Formation — états top-level (évite React error #310) ────
@@ -3056,66 +3060,80 @@ const NAV_GROUPS=[
 ];
 // ── Calcul TARGET GLOBAL / TARGET RESTANTE ──
 const isAdm=user.role==="admin"||user.role==="superadmin";
-const agentMoi=agents.find(a=>users.find(u=>u.id===user.id)?.agentId===a.id);
+const agentMoi=agentsFull.find(a=>users.find(u=>u.id===user.id)?.agentId===a.id);
 const tglobal=isAdm
-  ? agents.filter(a=>a.actif!==false).reduce((s,ag)=>s+getTargetAgent(ag.id,ag.dateDebut),0)
+  ? agentsFull.reduce((s,ag)=>s+getTargetAgent(ag.id,ag.dateDebut),0)
   : (agentMoi?getTargetAgent(agentMoi.id,agentMoi.dateDebut):0);
 const caFournPourTarget=isAdm
-  ? agents.filter(a=>a.actif!==false).reduce((s,ag)=>s+getMFourn(ag.id,moisCa),0)
+  ? agentsFull.reduce((s,ag)=>s+getMFourn(ag.id,moisCa),0)
   : (agentMoi?getMFourn(agentMoi.id,moisCa):0);
 const trestante=Math.max(0,tglobal-caFournPourTarget);
 return(
 <div style={{fontFamily:"'Poppins',sans-serif",background:T.bg,minHeight:"100vh",color:T.text,display:"flex",flexDirection:"row"}}>
 <style>{makeCSS(T,JVc,themeMode==="light")}</style>
 {/* ── TARGET boxes — centre haut, visible sur toutes les pages ── */}
-<div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",gap:8,pointerEvents:"none",alignItems:"center"}}>
-  <div style={{background:"#082a08",border:"2px solid #16a34a",borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:800,color:GRc,textAlign:"center",lineHeight:1.4,minWidth:140,pointerEvents:"none"}}>
-    TARGET GLOBAL<br/><span style={{fontSize:15}}>{fmt(tglobal)}</span>
+{(()=>{
+const diagAgents=agentsFull.length;
+const diagAgentMoi=agentMoi?.nom||null;
+const diagMsg=tglobal===0?(isAdm?`⚠ ${diagAgents} agent(s) actif(s) — vérifiez Paramètres > Objectifs`:(diagAgentMoi?null:"⚠ Votre compte n'est pas lié à un agent")):null;
+return(
+<div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",gap:8,alignItems:"center",flexDirection:"column"}}>
+  <div style={{display:"flex",gap:8,alignItems:"center",pointerEvents:"none"}}>
+    <div style={{background:"#082a08",border:"2px solid #16a34a",borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:800,color:GRc,textAlign:"center",lineHeight:1.4,minWidth:140}}>
+      TARGET GLOBAL<br/><span style={{fontSize:15}}>{fmt(tglobal)}</span>
+    </div>
+    <div style={{background:"#2a0808",border:"2px solid #dc2626",borderRadius:8,padding:"6px 16px",fontSize:11,fontWeight:800,color:"#ef4444",textAlign:"center",animation:"blink-border 1.2s ease-in-out infinite",lineHeight:1.4,minWidth:150}}>
+      TARGET RESTANTE<br/><span style={{fontSize:17,fontWeight:900}}>{fmt(trestante)}</span>
+    </div>
   </div>
-  <div style={{background:"#2a0808",border:"2px solid #dc2626",borderRadius:8,padding:"6px 16px",fontSize:11,fontWeight:800,color:"#ef4444",textAlign:"center",animation:"blink-border 1.2s ease-in-out infinite",lineHeight:1.4,minWidth:150,pointerEvents:"none"}}>
-    TARGET RESTANTE<br/><span style={{fontSize:17,fontWeight:900}}>{fmt(trestante)}</span>
-  </div>
+  {diagMsg&&<div style={{background:"#1a0a00",border:"1px solid #f59e0b",borderRadius:6,padding:"3px 12px",fontSize:11,color:"#fbbf24",fontWeight:600,textAlign:"center",maxWidth:360}}>{diagMsg}</div>}
 </div>
-{/* ══ SIDEBAR GAUCHE — DESKTOP ══ */}
+);
+})()}
+{/* ══ SIDEBAR GAUCHE — DESKTOP / TABLETTE ══ */}
 {!isMobile&&(
 <div style={{
-  width:230,minWidth:230,minHeight:"100vh",position:"fixed",left:0,top:0,zIndex:200,
+  width:isTablet?60:230,minWidth:isTablet?60:230,minHeight:"100vh",position:"fixed",left:0,top:0,zIndex:200,
   background:T.bg2,borderRight:`1px solid ${T.bord}`,
   display:"flex",flexDirection:"column",
   boxShadow:`2px 0 18px rgba(0,0,0,0.18)`
 }}>
   {/* Logo */}
-  <div onClick={()=>goNav("dashboard")} style={{padding:"14px 12px 12px",borderBottom:`1px solid ${T.bord}`,cursor:"pointer",flexShrink:0}}>
-    <img src="https://d1yei2z3i6k35z.cloudfront.net/8208688/69e62ce2650d29.78520439_L1sansarriereplan.png" alt="Eureka" style={{width:"100%",height:"auto",maxHeight:52,objectFit:"contain",display:"block"}}/>
+  <div onClick={()=>goNav("dashboard")} style={{padding:isTablet?"12px 0":"14px 12px 12px",borderBottom:`1px solid ${T.bord}`,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    {isTablet
+      ? <span style={{fontSize:20,fontWeight:900,color:JVc,letterSpacing:"-1px"}}>E</span>
+      : <img src="https://d1yei2z3i6k35z.cloudfront.net/8208688/69e62ce2650d29.78520439_L1sansarriereplan.png" alt="Eureka" style={{width:"100%",height:"auto",maxHeight:52,objectFit:"contain",display:"block"}}/>
+    }
   </div>
   {/* Nav groupée */}
-  <div style={{flex:1,overflowY:"auto",padding:"10px 8px 0"}}>
+  <div style={{flex:1,overflowY:"auto",padding:isTablet?"8px 4px 0":"10px 8px 0"}}>
   {NAV_GROUPS.map(grp=>{
     const items=navItems.filter(n=>grp.ids.includes(n.id));
     if(!items.length) return null;
     return(
-    <div key={grp.label} style={{marginBottom:6}}>
-      <div style={{fontSize:10,color:T.muted,fontWeight:700,letterSpacing:".14em",padding:"8px 10px 4px"}}>{grp.label}</div>
+    <div key={grp.label} style={{marginBottom:isTablet?2:6}}>
+      {!isTablet&&<div style={{fontSize:10,color:T.muted,fontWeight:700,letterSpacing:".14em",padding:"8px 10px 4px"}}>{grp.label}</div>}
       {items.map(n=>{
         const isActive=vue===n.id;
         return(
-        <button key={n.id} onClick={()=>goNav(n.id)} style={{
-          width:"100%",padding:"9px 12px",marginBottom:2,
-          display:"flex",alignItems:"center",gap:10,
+        <button key={n.id} onClick={()=>goNav(n.id)} title={isTablet?n.label:undefined} style={{
+          width:"100%",padding:isTablet?"10px 0":"9px 12px",marginBottom:2,
+          display:"flex",alignItems:"center",justifyContent:isTablet?"center":"flex-start",gap:isTablet?0:10,
           background:isActive?`${BR}cc`:"transparent",
           color:isActive?JVc:JVc+"aa",
           border:"none",
           borderLeft:isActive?`3px solid ${JVc}`:"3px solid transparent",
           borderRadius:"0 8px 8px 0",
           cursor:"pointer",fontSize:13.5,fontWeight:isActive?700:500,
-          textAlign:"left",transition:".18s",fontFamily:"'Poppins',sans-serif"
+          textAlign:isTablet?"center":"left",transition:".18s",fontFamily:"'Poppins',sans-serif",
+          position:"relative"
         }}
         onMouseEnter={e=>{if(!isActive){e.currentTarget.style.background=`${JVc}10`;e.currentTarget.style.color=T.text;}}}
         onMouseLeave={e=>{if(!isActive){e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.sub;}}}>
-          <span style={{fontSize:16,width:22,textAlign:"center",flexShrink:0}}>{NAV_ICONS[n.id]||"▸"}</span>
-          <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n.label}</span>
-          {n.id==="dashboard"&&stats.rappels>0&&<span style={{background:"#dc2626",color:"white",borderRadius:10,fontSize:11,padding:"1px 6px",fontWeight:800,marginLeft:"auto"}}>{stats.rappels}</span>}
-          {n.id==="preclos"&&nbPreclosAujourdHui>0&&<span style={{background:"#dc2626",color:"white",borderRadius:10,fontSize:11,padding:"1px 6px",fontWeight:800,marginLeft:"auto",animation:"blink-border 1s ease-in-out infinite"}}>{nbPreclosAujourdHui}</span>}
+          <span style={{fontSize:isTablet?18:16,width:22,textAlign:"center",flexShrink:0}}>{NAV_ICONS[n.id]||"▸"}</span>
+          {!isTablet&&<span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n.label}</span>}
+          {n.id==="dashboard"&&stats.rappels>0&&<span style={{background:"#dc2626",color:"white",borderRadius:10,fontSize:11,padding:"1px 5px",fontWeight:800,position:isTablet?"absolute":"static",top:isTablet?4:undefined,right:isTablet?4:undefined,marginLeft:isTablet?0:"auto"}}>{stats.rappels}</span>}
+          {n.id==="preclos"&&nbPreclosAujourdHui>0&&<span style={{background:"#dc2626",color:"white",borderRadius:10,fontSize:11,padding:"1px 5px",fontWeight:800,position:isTablet?"absolute":"static",top:isTablet?4:undefined,right:isTablet?4:undefined,marginLeft:isTablet?0:"auto",animation:"blink-border 1s ease-in-out infinite"}}>{nbPreclosAujourdHui}</span>}
         </button>
         );
       })}
@@ -3125,17 +3143,29 @@ return(
   </div>
   {/* Badge sync Supabase */}
   {window.db.ready&&(
-  <div style={{padding:"6px 10px",borderTop:`1px solid ${T.bord}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+  <div style={{padding:"6px 10px",borderTop:`1px solid ${T.bord}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:isTablet?"center":"space-between",gap:6}}>
     <div style={{display:"flex",alignItems:"center",gap:5}}>
       <div style={{width:7,height:7,borderRadius:"50%",background:supaStatus==="ok"?"#4ade80":supaStatus==="error"?"#f87171":"#fbbf24",boxShadow:`0 0 5px ${supaStatus==="ok"?"#4ade80":supaStatus==="error"?"#f87171":"#fbbf24"}`}} className="pulse"/>
-      <span style={{fontSize:11,color:supaStatus==="ok"?GRc:supaStatus==="error"?"#f87171":"#fbbf24",fontWeight:600}}>
-        {supaStatus==="ok"?"Synchro OK":supaStatus==="error"?"Erreur sync":"Connexion…"}
-      </span>
+      {!isTablet&&<span style={{fontSize:11,color:supaStatus==="ok"?GRc:supaStatus==="error"?"#f87171":"#fbbf24",fontWeight:600}}>{supaStatus==="ok"?"Synchro OK":supaStatus==="error"?"Erreur sync":"Connexion…"}</span>}
     </div>
-    {supaLastSync&&<span style={{fontSize:10,color:T.muted}}>{supaLastSync}</span>}
+    {!isTablet&&supaLastSync&&<span style={{fontSize:10,color:T.muted}}>{supaLastSync}</span>}
   </div>)}
   {/* Bas : utilisateur + actions */}
-  <div style={{padding:"10px 10px 14px",borderTop:`1px solid ${T.bord}`,flexShrink:0}}>
+  <div style={{padding:isTablet?"8px 4px":"10px 10px 14px",borderTop:`1px solid ${T.bord}`,flexShrink:0}}>
+  {isTablet?(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+      <div title={`${user.prenom} ${user.nom} — ${user.role}`} style={{width:34,height:34,borderRadius:"50%",background:BR,border:`2px solid ${JVc}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:JVc,cursor:"default"}}>{(user.prenom||user.login||"?")[0].toUpperCase()}</div>
+      <button onClick={()=>setThemeMode(m=>m==="dark"?"light":"dark")} title="Thème" style={{background:"transparent",border:`1px solid ${T.bord}`,color:T.sub,padding:"5px",borderRadius:7,cursor:"pointer",fontSize:14,transition:".2s",width:"100%"}}
+        onMouseEnter={e=>{e.target.style.borderColor=JVc;e.target.style.color=JVc;}} onMouseLeave={e=>{e.target.style.borderColor=T.bord;e.target.style.color=T.sub;}}>
+        {themeMode==="dark"?"☀":"◑"}
+      </button>
+      <button onClick={()=>{log("Déconnexion");setUser(null);}} title="Déconnexion" style={{background:"transparent",border:"1px solid #7f1d1d55",color:"#f87171",padding:"5px",borderRadius:7,cursor:"pointer",fontSize:14,transition:".2s",width:"100%"}}
+        onMouseEnter={e=>{e.target.style.background="#7f1d1d22";}} onMouseLeave={e=>{e.target.style.background="transparent";}}>
+        ⬡
+      </button>
+    </div>
+  ):(
+    <>
     <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
       <div style={{width:36,height:36,borderRadius:"50%",background:BR,border:`2px solid ${JVc}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:JVc,flexShrink:0}}>
         {(user.prenom||user.login||"?")[0].toUpperCase()}
@@ -3155,6 +3185,8 @@ return(
         ⬡ Déconnexion
       </button>
     </div>
+    </>
+  )}
   </div>
 </div>
 )}
@@ -3335,7 +3367,7 @@ style={{flex:1,background:"transparent",border:"none",color:vue===n.id?JV:JVc+"b
   );
 })()}
 {/* ── Contenu principal (fade-in) ── */}
-<div style={{flex:1,marginLeft:isMobile?0:230,padding:isMobile?"10px 10px 60px":"22px 26px",minHeight:"100vh",width:isMobile?"100%":"calc(100% - 230px)",boxSizing:"border-box"}} className="fade-in">
+<div style={{flex:1,marginLeft:isMobile?0:isTablet?60:230,padding:isMobile?"10px 10px 60px":isTablet?"14px 16px":"22px 26px",minHeight:"100vh",width:isMobile?"100%":isTablet?"calc(100% - 60px)":"calc(100% - 230px)",boxSizing:"border-box"}} className="fade-in">
 {/* ── Bandeau connexion perdue ── */}
 {supaStatus==="error"&&(
 <div style={{position:"sticky",top:0,zIndex:400,background:"#2a0a0a",border:"1px solid #dc2626",borderRadius:8,padding:"8px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10,fontSize:13,color:"#f87171",fontWeight:600}}>
@@ -3368,7 +3400,7 @@ return(
 </button>}
 {!isMobile&&<button className="btn-secondary" style={{fontSize:14,padding:"8px 16px"}} onClick={()=>{
 const negociables=prospects.filter(p=>getUrgence(p.dateEch_elec,p.dateEch_gaz)?.prio===4);
-const agMoi=agents.find(a=>users.find(u=>u.id===user.id)?.agentId===a.id);
+const agMoi=agentsFull.find(a=>users.find(u=>u.id===user.id)?.agentId===a.id);
 const objectifMois=(user.role==="admin"||user.role==="superadmin")?null:(agMoi?getTargetAgent(agMoi.id,agMoi.dateDebut):6000);
 const mF=(user.role==="admin"||user.role==="superadmin")?null:getMFourn(agMoi?.id,moisCa);
 const pct=objectifMois&&mF?Math.round((mF/objectifMois)*100):null;
@@ -3445,7 +3477,7 @@ setShowRapportSemaine(true);
 </div>}
 {newsData&&!newsLoading&&<div className="fade-in">
 <div style={{fontSize:14,color:T.text,marginBottom:14,padding:"8px 14px",background:T.bg3,borderRadius:8,borderLeft:`3px solid ${newsData.isLive?"#4ade80":"#fbbf24"}`}}>{newsData.resume}</div>
-<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginBottom:16}}>
+<div style={{display:"grid",gridTemplateColumns:isCompact?"1fr":"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginBottom:16}}>
 {(newsData.points||[]).map((pt,i)=>{
 const isOpp=pt.impact==="opportunité";
 const cc=isOpp?"#16a34a":"#dc2626";
@@ -3499,7 +3531,7 @@ return(
 </div>
 )}
 {/* Stats cards — grille adaptive */}
-<div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:isMobile?6:8,marginBottom:isMobile?10:16}}>
+<div style={{display:"grid",gridTemplateColumns:isCompact?"repeat(2,1fr)":"repeat(4,1fr)",gap:isCompact?6:8,marginBottom:isCompact?10:16}}>
 {[
 ["Total", stats.total, "#60a5fa", ()=>goFiltre()],
 ["Négociables", stats.negociable, JV, ()=>goFiltre("Tous","neg")],
@@ -3510,10 +3542,10 @@ return(
 ["Sans ACD", stats.sansAcd, "#fb923c", goSansAcd],
 ["CA Fourn.", fmt(caFournMoisSel),"#fbbf24", null],
 ].map(([lbl,val,c,fn])=>(
-<div key={lbl} className={fn?"stat-box":"card"} onClick={fn||undefined} style={!fn?{cursor:"default"}:{padding:isMobile?"14px":undefined}}>
-<div style={{fontSize:isMobile?10:12,color:T.muted,fontWeight:600,letterSpacing:".04em",marginBottom:isMobile?6:10}}>{lbl}</div>
-<div style={{fontSize:isMobile?22:28,fontWeight:800,color:c}}>{val}</div>
-{fn&&!isMobile&&<div style={{fontSize:13,color:T.muted,marginTop:6}}>Voir la liste</div>}
+<div key={lbl} className={fn?"stat-box":"card"} onClick={fn||undefined} style={!fn?{cursor:"default"}:{padding:isCompact?"14px":undefined}}>
+<div style={{fontSize:isCompact?10:12,color:T.muted,fontWeight:600,letterSpacing:".04em",marginBottom:isCompact?6:10}}>{lbl}</div>
+<div style={{fontSize:isCompact?22:28,fontWeight:800,color:c}}>{val}</div>
+{fn&&!isCompact&&<div style={{fontSize:13,color:T.muted,marginTop:6}}>Voir la liste</div>}
 </div>
 ))}
 </div>
@@ -3584,7 +3616,7 @@ style={{background:T.bg3,border:`1px solid ${T.bord}`,color:JVc,fontWeight:700,f
 </div>
 )
 : /* Mode mois + année */
-<div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:isMobile?6:10}}>
+<div style={{display:"grid",gridTemplateColumns:isCompact?"repeat(2,1fr)":"repeat(4,1fr)",gap:isCompact?6:10}}>
 {[
 {label:"Factures",sub:moisLbl(moisCa),val:fM,color:"#60a5fa"},
 {label:"ACD reçus",sub:moisLbl(moisCa),val:aM,color:GRc},
@@ -3815,13 +3847,14 @@ onClick={()=>setShowCalibPicker("dossiers")}>{(calibDebut||calibFin)?"Modifier c
 {showCalibPicker==="dossiers"&&<DateRangePicker debut={calibDebut} fin={calibFin} onChange={(d,f)=>{setCalibDebut(d);setCalibFin(f);}} onClose={()=>setShowCalibPicker(null)} T={T}/>}
 <div style={{display:"flex",gap:isMobile?6:8,marginBottom:18,flexWrap:"wrap"}}>
 <input className="field" style={{flex:1,minWidth:isMobile?120:220}} placeholder={isMobile?"Rechercher...":"Rechercher société, décideur, ville, SIRET..."} value={rech} onChange={e=>setRech(e.target.value)}/>
-{isMobile?(
-// Mobile : 3 filtres essentiels
+{isCompact?(
+// Mobile / Tablette : filtres essentiels
 <>
 <select className="field" style={{width:"calc(50% - 4px)"}} value={filtreS} onChange={e=>setFiltreS(e.target.value)}><option>Tous</option>{STATUTS.map(s=><option key={s}>{s}</option>)}</select>
 <select className="field" style={{width:"calc(50% - 4px)"}} value={filtreU} onChange={e=>setFiltreU(e.target.value)}>
 <option value="Tous">Tous statuts</option><option value="neg">Négociable</option><option value="bien">Bientôt</option><option value="sansAcd">Sans ACD</option>
 </select>
+{!isMobile&&<select className="field" style={{width:"calc(50% - 4px)"}} value={filtreA} onChange={e=>setFiltreA(e.target.value)}><option value="Tous">Tous agents</option>{agentsFull.map(a=><option key={a.id} value={a.id}>{a.nom}</option>)}</select>}
 </>
 ):(
 // Desktop : tous les filtres
@@ -3837,7 +3870,7 @@ onClick={()=>setShowCalibPicker("dossiers")}>{(calibDebut||calibFin)?"Modifier c
 )}
 </div>
 <div style={{background:T.card,border:`1px solid ${T.bord}`,borderRadius:10,overflow:"hidden"}}>
-{!isMobile&&(()=>{
+{!isCompact&&(()=>{
 const sortHd=(col,label)=>{
   const active=sortDoss.col===col;
   const arrow=active?(sortDoss.dir===-1?" ▼":" ▲"):"";
@@ -3870,22 +3903,22 @@ const energieText = (carElec>0?`Élec(${p.segment_elec||"?"})`:"") + (carElec>0&
 
 return(
 <div key={p.id} className="row-hover" onClick={()=>{setProsp(p);setVue("fiche");setFicheTab("societe");log("Ouverture fiche",p.societe);}}
-style={{display:isMobile?"flex":"grid",flexDirection:isMobile?"column":undefined,gridTemplateColumns:isMobile?undefined:"0.7fr 1.5fr 0.9fr 0.9fr 0.65fr 1fr 0.8fr 0.8fr 48px 36px",padding:isMobile?"12px 14px":"12px 18px",borderBottom:`1px solid ${T.bg3}`,alignItems:isMobile?"flex-start":"center",gap:isMobile?5:0}}>
+style={{display:isCompact?"flex":"grid",flexDirection:isCompact?"column":undefined,gridTemplateColumns:isCompact?undefined:"0.7fr 1.5fr 0.9fr 0.9fr 0.65fr 1fr 0.8fr 0.8fr 48px 36px",padding:isCompact?"12px 14px":"12px 18px",borderBottom:`1px solid ${T.bg3}`,alignItems:isCompact?"flex-start":"center",gap:isCompact?5:0}}>
 {!isMobile&&<div style={{fontSize:13,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:8}}>{fmtDate(p.datePro)}</div>}
 <div style={{overflow:"hidden",paddingRight:6}}>
 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-<span style={{fontWeight:600,fontSize:isMobile?13:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.societe}</span>
+<span style={{fontWeight:600,fontSize:isCompact?13:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.societe}</span>
 {isClient&&<span style={{background:"#0f2a0f",color:GRc,border:"1px solid #16a34a",borderRadius:20,fontSize:11,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓</span>}
 {nonContact&&<span style={{background:"#2a1a08",color:"#fbbf24",border:"1px solid #d97706",borderRadius:20,fontSize:11,padding:"1px 6px",fontWeight:700,flexShrink:0}}>+{joursDepuis}j</span>}
 </div>
 <div style={{fontSize:12,color:T.sub,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.ville}</div>
 {rg.alerte&&u?.prio>=3&&<div style={{fontSize:11,color:"#fb923c",fontWeight:600}}>RGPD</div>}
-{isMobile&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+{isCompact&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
 <div style={{width:28,height:28,borderRadius:"50%",background:sq.color+"22",border:`2px solid ${sq.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:sq.color}}>{sq.score}</div>
 <div onClick={e=>{e.stopPropagation();setForm({...p});setEditMode(true);setDoublonMsg(null);setModeForm("prospect");setVue("form");setFicheTab("societe");}} style={{color:T.muted,padding:"4px 10px",fontSize:18,cursor:"pointer"}}>✎</div>
 </div>}
 </div>
-{isMobile?(
+{isCompact?(
 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
 <span style={{fontSize:13,color:T.sub}}>Enr: {fmtDate(p.datePro)}</span>
 {bdg(p.type,TYPE_S[p.type])}
@@ -4819,8 +4852,8 @@ log("Agent supprimé définitivement",ag.nom);setAgentVu(null);setVue("agents");
 {dossGag.length===0&&<div style={{padding:32,color:T.muted,textAlign:"center",fontSize:15}}>Aucun dossier signé.</div>}
 {dossGag.map(p=>{const v=calcValeur(p.car_elec,p.duree_elec,p.marge_elec,p.car_gaz,p.duree_gaz,p.marge_gaz);return(
 <div key={p.id} className="row-hover" onClick={()=>{setProsp(p);setVue("fiche");setFicheTab("societe");setNavBack({vue:"profil-agent",label:ag.nom});}}
-style={{padding:isMobile?"12px 14px":"15px 22px",borderBottom:`1px solid ${T.bg3}`,display:isMobile?"block":"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",fontSize:isMobile?13:14,alignItems:"center"}}>
-{isMobile?(
+style={{padding:isCompact?"12px 14px":"15px 22px",borderBottom:`1px solid ${T.bg3}`,display:isCompact?"block":"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",fontSize:isCompact?13:14,alignItems:"center"}}>
+{isCompact?(
 <div>
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
 <span style={{fontWeight:700}}>{p.societe}</span>
@@ -5120,8 +5153,8 @@ return(
 </div>}
 {poolDoss.length===0&&<div style={{padding:48,textAlign:"center",color:T.muted,fontSize:16}}>Aucun dossier non attribué. 🎉</div>}
 {poolDoss.map(p=>(
-<div key={p.id} style={{display:isMobile?"block":"grid",gridTemplateColumns:"40px 0.7fr 1.2fr 0.8fr 0.8fr 0.7fr 0.8fr 0.8fr auto",padding:isMobile?"12px 14px":"12px 18px",borderBottom:`1px solid ${T.bg3}`,alignItems:"center",gap:8,background:poolSelection.includes(p.id)?`${JV}10`:"transparent"}}>
-{!isMobile&&<div><input type="checkbox" checked={poolSelection.includes(p.id)} onChange={()=>toggleOne(p.id)} style={{cursor:"pointer"}}/></div>}
+<div key={p.id} style={{display:isCompact?"block":"grid",gridTemplateColumns:"40px 0.7fr 1.2fr 0.8fr 0.8fr 0.7fr 0.8fr 0.8fr auto",padding:isCompact?"12px 14px":"12px 18px",borderBottom:`1px solid ${T.bg3}`,alignItems:"center",gap:8,background:poolSelection.includes(p.id)?`${JV}10`:"transparent"}}>
+{!isCompact&&<div><input type="checkbox" checked={poolSelection.includes(p.id)} onChange={()=>toggleOne(p.id)} style={{cursor:"pointer"}}/></div>}
 <div style={{fontSize:12,color:T.sub}}>{fmtDate(p.datePro)||"—"}</div>
 <div style={{fontWeight:700,cursor:"pointer",color:JVc}} onClick={()=>{setProsp(p);setVue("fiche");setFicheTab("societe");setNavBack({vue:"pool",label:"Pool dossiers"});}}>{p.societe}</div>
 <div>{bdg(p.type,TYPE_S[p.type])}</div>
@@ -6048,8 +6081,8 @@ const ag2=agents.find(a=>a.id===p.agentId);
 return(
 <div key={p.id} className="row-hover"
 onClick={()=>{setProsp(p);setVue("fiche");setFicheTab("societe");log("Ouverture fiche depuis journal",p.societe);}}
-style={{display:isMobile?"block":"grid",gridTemplateColumns:isMobile?undefined:"108px 1fr 110px 130px 90px 115px 130px",padding:isMobile?"13px 14px":"11px 16px",borderBottom:`1px solid ${T.bg3}`,alignItems:"center",fontSize:15}}>
-{isMobile?<div>
+style={{display:isCompact?"block":"grid",gridTemplateColumns:isCompact?undefined:"108px 1fr 110px 130px 90px 115px 130px",padding:isCompact?"13px 14px":"11px 16px",borderBottom:`1px solid ${T.bg3}`,alignItems:"center",fontSize:15}}>
+{isCompact?<div>
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
 <span style={{fontWeight:700,fontSize:16,color:JVc}}>{p.societe}</span>
 <span style={{fontSize:17,fontWeight:800,color:valEureka>0?GRc:"#fbbf24"}}>{valEureka>0?fmt(valEureka):"—"}</span>
@@ -6079,8 +6112,8 @@ onMouseLeave={e=>e.currentTarget.style.textShadow="none"}>{p.societe}</span>
 );
 })}
 {/* ── Ligne totaux calibrés ── */}
-<div style={{padding:"8px 12px",borderTop:`2px solid ${JV}33`,display:isMobile?"flex":"grid",gridTemplateColumns:isMobile?undefined:"108px 1fr 110px 130px 90px 115px 130px",fontSize:14,fontWeight:700,background:`${JV}08`,flexWrap:"wrap",gap:isMobile?10:0,alignItems:"center"}}>
-{isMobile?<>
+<div style={{padding:"8px 12px",borderTop:`2px solid ${JV}33`,display:isCompact?"flex":"grid",gridTemplateColumns:isCompact?undefined:"108px 1fr 110px 130px 90px 115px 130px",fontSize:14,fontWeight:700,background:`${JV}08`,flexWrap:"wrap",gap:isCompact?10:0,alignItems:"center"}}>
+{isCompact?<>
 <span style={{color:T.muted,flex:1}}>TOTAL — {gCal.length} dossier{gCal.length>1?"s":""} calibré{gCal.length>1?"s":""}</span>
 <span style={{color:GRc,fontSize:17}}>{fmt(totalEureka)}</span>
 </>:<>
@@ -6159,16 +6192,16 @@ return(
 {showCalibPicker==="journal-activite"&&<DateRangePicker debut={calibDebut} fin={calibFin} onChange={(d,f)=>{setCalibDebut(d);setCalibFin(f);}} onClose={()=>setShowCalibPicker(null)} T={T}/>}
 <div style={{background:T.card,border:`1px solid ${T.bord}`,borderRadius:10,overflow:"hidden"}}>
 {/* En-tête : IP visible pour admin/superadmin uniquement */}
-<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":(user.role==="admin"||user.role==="superadmin")?"160px 140px 1fr 120px":"160px 140px 1fr",padding:"12px 22px",borderBottom:`1px solid ${T.bord}`,fontSize:13,color:T.muted,fontWeight:700,letterSpacing:".1em",background:T.bg3}}>
-  <div>DATE ET HEURE</div><div style={{paddingLeft:"1cm"}}>UTILISATEUR</div><div style={{paddingLeft:"5cm"}}>ACTION</div>
+{!isCompact&&<div style={{display:"grid",gridTemplateColumns:(user.role==="admin"||user.role==="superadmin")?"160px 140px 1fr 120px":"160px 140px 1fr",padding:"12px 22px",borderBottom:`1px solid ${T.bord}`,fontSize:13,color:T.muted,fontWeight:700,letterSpacing:".1em",background:T.bg3}}>
+  <div>DATE ET HEURE</div><div>UTILISATEUR</div><div>ACTION</div>
   {(user.role==="admin"||user.role==="superadmin")&&<div style={{color:"#fbbf24"}}>IP</div>}
-</div>
+</div>}
 {jFiltre.length===0&&<div style={{padding:48,textAlign:"center",color:T.muted,fontSize:16}}>Aucune activité dans cette période.</div>}
 {jFiltre.map((e,i,arr)=>(
-  <div key={i} style={{display:isMobile?"flex":"grid",flexDirection:isMobile?"column":undefined,gridTemplateColumns:isMobile?undefined:(user.role==="admin"||user.role==="superadmin")?"160px 140px 1fr 120px":"160px 140px 1fr",padding:"10px 22px",borderBottom:i<arr.length-1?`1px solid ${T.bg3}`:"none",alignItems:"center",background:i%2===0?"transparent":`${T.bg3}55`}}>
-    <div style={{fontSize:13,color:T.sub,fontFamily:"monospace"}}>{e.ts}</div>
-    <div style={{fontSize:14,fontWeight:600,paddingLeft:"1cm",color:e.user==="Système"?T.muted:(themeMode==="light"?"#05060f":JV)}}>{e.user}</div>
-    <div style={{fontSize:14,color:T.text,paddingLeft:"5cm"}}>{e.action}{e.detail?` — ${e.detail}`:""}</div>
+  <div key={i} style={{display:isCompact?"flex":"grid",flexDirection:isCompact?"column":undefined,gridTemplateColumns:isCompact?undefined:(user.role==="admin"||user.role==="superadmin")?"160px 140px 1fr 120px":"160px 140px 1fr",padding:isCompact?"10px 14px":"10px 22px",borderBottom:i<arr.length-1?`1px solid ${T.bg3}`:"none",alignItems:isCompact?"flex-start":"center",gap:isCompact?3:0,background:i%2===0?"transparent":`${T.bg3}55`}}>
+    <div style={{fontSize:12,color:T.sub,fontFamily:"monospace"}}>{e.ts}</div>
+    <div style={{fontSize:isCompact?14:14,fontWeight:600,color:e.user==="Système"?T.muted:(themeMode==="light"?"#05060f":JV)}}>{e.user}</div>
+    <div style={{fontSize:14,color:T.text}}>{e.action}{e.detail?` — ${e.detail}`:""}</div>
     {(user.role==="admin"||user.role==="superadmin")&&<div style={{fontSize:12,color:e.action==="Connexion"?"#fbbf24":T.muted,fontFamily:"monospace",fontWeight:e.action==="Connexion"?700:400}}>{e.ip||"—"}</div>}
   </div>
 ))}
