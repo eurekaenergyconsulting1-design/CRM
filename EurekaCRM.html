@@ -182,6 +182,21 @@ window.storage = {
       }catch(e){ console.warn('[db.insert] réseau:',e.message); return false; }
     },
 
+    // Insérer et retourner la ligne créée (avec l'ID généré par Supabase)
+    async insertReturn(table, row){
+      if(!this.ready) return null;
+      try{
+        var r = await fetch(this.url+'/rest/v1/'+table, {
+          method:'POST',
+          headers:this._h({'Prefer':'return=representation'}),
+          body:JSON.stringify(row)
+        });
+        if(!r.ok){ var t=await r.text(); console.warn('[db.insertReturn]',table,r.status,t); return null; }
+        var data=await r.json();
+        return Array.isArray(data)?data[0]:data;
+      }catch(e){ console.warn('[db.insertReturn] réseau:',e.message); return null; }
+    },
+
     // Supprimer une ligne par colonne = valeur
     async del(table, col, val){
       if(!this.ready) return false;
@@ -2823,21 +2838,26 @@ setSuppr(null);setProsp(null);setVue("prospects");
 // Sync Supabase — fire & forget
 if(window.db.ready) window.db.del('prospects','id',id).catch(e=>setSupaErrMsg("Erreur Supabase: "+e.message));
 }
-function saveAgent(){
+async function saveAgent(){
 if(!formAgent.nom.trim())return;
-let saved;
 if(formAgent.id){
-  saved={...formAgent};
+  // Modification d'un agent existant
+  const saved={...formAgent};
   setAgents(a=>a.map(x=>x.id===formAgent.id?saved:x));
   log("Agent modifié",formAgent.nom);
+  if(window.db.ready) window.db.upsert('agents',[agentToSupa(saved)]).catch(e=>setSupaErrMsg("Erreur Supabase: "+e.message));
+  setModeForm(null);setVue("profil-agent");
 }else{
-  saved={...formAgent,id:"a"+Date.now()};
-  setAgents(a=>[...a,saved]);
-  log("Agent créé",formAgent.nom);
+  // Création — laisser Supabase générer l'ID entier
+  setModeForm(null);setVue("agents");
+  if(!window.db.ready){setSupaErrMsg("⚠ Supabase non connecté — agent non sauvegardé. Reconnectez-vous et réessayez.");return;}
+  const payload={nom:formAgent.nom.trim(),date_debut:formAgent.dateDebut||null,actif:true};
+  const row=await window.db.insertReturn('agents',payload);
+  if(!row){setSupaErrMsg("Erreur Supabase : impossible de créer l'agent. Vérifiez la connexion.");return;}
+  const newAgent=supaToAgent(row);
+  setAgents(a=>[...a,newAgent]);
+  log("Agent créé",newAgent.nom);
 }
-// Sync Supabase — fire & forget
-if(window.db.ready) window.db.upsert('agents',[agentToSupa(saved)]).catch(e=>setSupaErrMsg("Erreur Supabase: "+e.message));
-setModeForm(null);setVue(formAgent.id?"profil-agent":"agents");
 }
 function addAppel(pId){
 if(!newAppel.date||!newAppel.resume.trim())return;
