@@ -45,16 +45,36 @@
   </div>
   <script>
     // Fallback : si React ne monte pas dans les 15s → afficher un message d'erreur avec bouton reload
-    window._crmLoadTimeout = setTimeout(function() {
+    // Diagnostic progressif : met à jour le message toutes les 5s pour montrer l'avancement
+    var _diagInterval = setInterval(function() {
+      var el = document.getElementById('loading-msg');
+      var screen = document.getElementById('static-loading');
+      if (!screen || !document.getElementById('root').contains(screen)) { clearInterval(_diagInterval); return; }
+      if (!el) return;
+      var reactOk = typeof React !== 'undefined';
+      var reactDomOk = typeof ReactDOM !== 'undefined';
+      var babelOk = typeof Babel !== 'undefined';
+      if (!reactOk || !reactDomOk || !babelOk) {
+        el.textContent = '⚠ Chargement des librairies CDN… (vérifiez votre connexion)';
+      } else {
+        el.textContent = 'Compilation JSX en cours… (peut prendre 30-60 s sur certains appareils)';
+      }
+    }, 5000);
+    window._crmLoadTimeout = setTimeout(function() { // 60s : Babel standalone est très lent sur gros fichier
+      clearInterval(_diagInterval);
       var el = document.getElementById('loading-msg');
       var screen = document.getElementById('static-loading');
       if (screen && document.getElementById('root').contains(screen)) {
+        var reactOk = typeof React !== 'undefined';
+        var reactDomOk = typeof ReactDOM !== 'undefined';
+        var babelOk = typeof Babel !== 'undefined';
+        var detail = !reactOk ? 'React CDN non chargé' : !reactDomOk ? 'ReactDOM CDN non chargé' : !babelOk ? 'Babel CDN non chargé' : 'Erreur de compilation JSX — ouvrez F12 → Console pour le détail';
         if (el) {
-          el.innerHTML = '❌ Impossible de charger le CRM.<br><span style="font-size:13px">Vérifiez votre connexion internet, puis :</span><br><br>' +
+          el.innerHTML = '❌ Le CRM ne démarre pas.<br><span style="font-size:12px;color:#aaa">Cause probable : ' + detail + '</span><br><br>' +
             '<button onclick="location.reload()" style="margin-top:10px;padding:10px 24px;background:#F3E600;color:#07091a;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;font-family:Poppins,sans-serif">🔄 Recharger</button>';
         }
       }
-    }, 15000);
+    }, 60000);
   </script>
 
   <script>
@@ -5901,14 +5921,14 @@ return(
           <div style={{fontSize:13,color:T.sub,marginBottom:5,fontWeight:600}}>NOTE / COMMENTAIRE (Optionnel)</div>
           <textarea className="field" rows={3} value={calNote} onChange={e=>setCalNote(e.target.value)} placeholder="Détails du rappel..." style={{resize:"vertical"}}/>
         </div>
-        <button className="btn-primary" style={{width:"100%",fontSize:15}} onClick={()=>{
+        <button className="btn-primary" style={{width:"100%",fontSize:15}} onClick={async ()=>{
           const prosId=calDdVal;
           const type=document.getElementById("cal-type-sel")?.value||"rappel";
           if(!prosId){return alert("Sélectionnez un dossier");}
           if(!calDate){return alert("Sélectionnez une date");}
           const champ=type==="rappel"?"dateRappelClient":"dateRappelPerte";
           const pObj = prospects.find(p=>p.id==prosId);
-          
+
           const updatedHist=calNote.trim()?[...(pObj?.appelHistory||[]),{date:new Date().toISOString().split("T")[0],agent:`${user.prenom} ${user.nom}`,resume:`[RAPPEL PROGRAMMÉ AU ${fmtDate(calDate)}] ${calNote}`}]:pObj?.appelHistory||[];
           const pUpd={...pObj,[champ]:calDate,appelHistory:updatedHist};
           setProspects(ps=>ps.map(p=>p.id==prosId?pUpd:p));
@@ -7854,10 +7874,17 @@ return(
 
 
     // ── Mount ─────────────────────────────────────────────────────────────
-    // Annuler le fallback timeout si React compile et monte correctement
-    if (window._crmLoadTimeout) clearTimeout(window._crmLoadTimeout);
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(EurekaCRM));
+    // Annuler le fallback timeout APRÈS montage réussi seulement
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(EurekaCRM));
+      if (window._crmLoadTimeout) clearTimeout(window._crmLoadTimeout);
+    } catch(mountErr) {
+      console.error('[CRM] Erreur montage React:', mountErr);
+      var el = document.getElementById('loading-msg');
+      if (el) el.innerHTML = '❌ Erreur de démarrage du CRM.<br><span style="font-size:13px">' + mountErr.message + '</span><br><br>' +
+        '<button onclick="location.reload()" style="margin-top:10px;padding:10px 24px;background:#F3E600;color:#07091a;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;font-family:Poppins,sans-serif">🔄 Recharger</button>';
+    }
   </script>
 </body>
 </html>
