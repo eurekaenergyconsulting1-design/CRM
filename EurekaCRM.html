@@ -203,9 +203,9 @@ window.storage = {
       try{
         var r = await fetch(this.url+'/rest/v1/'+table+'?'+col+'=eq.'+encodeURIComponent(val), {
           method:'DELETE',
-          headers:this._h()
+          headers:this._h({'Prefer':'return=minimal'})
         });
-        if(!r.ok){ console.warn('[db.del]',table,r.status); return false; }
+        if(!r.ok){ var t=await r.text(); console.warn('[db.del]',table,r.status,t); return false; }
         return true;
       }catch(e){ console.warn('[db.del] réseau:',e.message); return false; }
     },
@@ -3089,16 +3089,16 @@ const caFournPourTarget=isAdm
   : (agentMoi?getMFourn(agentMoi.id,moisCa):0);
 const trestante=Math.max(0,tglobal-caFournPourTarget);
 return(
-<div style={{fontFamily:"'Poppins',sans-serif",background:T.bg,minHeight:"100vh",color:T.text,display:"flex",flexDirection:"row"}}>
+<div style={{fontFamily:"'Poppins',sans-serif",background:T.bg,minHeight:"100vh",color:T.text,display:"flex",flexDirection:isMobile?"column":"row",overflowX:isMobile?"hidden":"visible"}}>
 <style>{makeCSS(T,JVc,themeMode==="light")}</style>
 {/* ── TARGET boxes — centre haut, visible sur toutes les pages ── */}
-{(()=>{
+{!isMobile&&(()=>{
 const diagAgents=agentsFull.length;
 const diagAgentMoi=agentMoi?.nom||null;
 const diagMsg=tglobal===0?(isAdm?`⚠ ${diagAgents} agent(s) actif(s) — vérifiez Paramètres > Objectifs`:(diagAgentMoi?null:"⚠ Votre compte n'est pas lié à un agent")):null;
 return(
-<div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",gap:8,alignItems:"center",flexDirection:"column"}}>
-  <div style={{display:"flex",gap:8,alignItems:"center",pointerEvents:"none"}}>
+<div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",gap:8,alignItems:"center",flexDirection:"column",pointerEvents:"none"}}>
+  <div style={{display:"flex",gap:8,alignItems:"center"}}>
     <div style={{background:"#082a08",border:"2px solid #16a34a",borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:800,color:GRc,textAlign:"center",lineHeight:1.4,minWidth:140}}>
       TARGET GLOBAL<br/><span style={{fontSize:15}}>{fmt(tglobal)}</span>
     </div>
@@ -3106,7 +3106,7 @@ return(
       TARGET RESTANTE<br/><span style={{fontSize:17,fontWeight:900}}>{fmt(trestante)}</span>
     </div>
   </div>
-  {diagMsg&&<div style={{background:"#1a0a00",border:"1px solid #f59e0b",borderRadius:6,padding:"3px 12px",fontSize:11,color:"#fbbf24",fontWeight:600,textAlign:"center",maxWidth:360}}>{diagMsg}</div>}
+  {diagMsg&&<div style={{background:"#1a0a00",border:"1px solid #f59e0b",borderRadius:6,padding:"3px 12px",fontSize:11,color:"#fbbf24",fontWeight:600,textAlign:"center",maxWidth:360,pointerEvents:"auto"}}>{diagMsg}</div>}
 </div>
 );
 })()}
@@ -3519,7 +3519,7 @@ return(
 </div>
 );})}
 </div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+<div style={{display:"grid",gridTemplateColumns:isCompact?"1fr":"1fr 1fr",gap:10}}>
 <div style={{background:"#1a160a",border:`1px solid ${JV}44`,borderRadius:8,padding:"12px 14px"}}>
 <div style={{fontSize:13,fontWeight:700,color:JV,marginBottom:4}}>ARGUMENT DU JOUR</div>
 <div style={{fontSize:15,color:"#e8e0c0",lineHeight:1.6,fontStyle:"italic"}}>"{newsData.argument_du_jour}"</div>
@@ -4376,30 +4376,30 @@ return(
 </div>
 <div className="card">
 <Sec title="CONTACTS" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Décideur (PDG, DG...)","decideur","text",undefined,undefined,undefined)}
 {fField("Interlocuteur (secrétaire...)","interlocuteur","text",undefined,undefined,undefined)}
 </div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Signataire","signataire","text",undefined,undefined,undefined)}
 {fField("Poste du décideur","poste","text",undefined,undefined,undefined)}
 </div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Tél. portable 1","telP","tel",undefined,undefined,undefined)}
 {fField("Tél. portable 2","telP2","tel",undefined,undefined,undefined)}
 </div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Tél. fixe 1","telF","tel",undefined,undefined,undefined)}
 {fField("Tél. fixe 2","telF2","tel",undefined,undefined,undefined)}
 </div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Email 1","email","email",undefined,undefined,undefined)}
 {fField("Email 2","email2","email",undefined,undefined,undefined)}
 </div>
 {fField("Créneau d'appel préféré","creneau","text",CRENEAUX,undefined,undefined)}
 </Sec>
 <Sec title="SCORES FINANCIERS" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
 {fField("Score Elipro (/10)","scoreElipro","number",undefined,"0-10")}
 {fField("Score Crédit Safe (/100)","scoreCreditSafe","number",undefined,"0-100")}
 </div>
@@ -4434,7 +4434,7 @@ return(
     })}
   </div>);
 })()}
-<div style={{display:"grid",gridTemplateColumns:"0.6fr 1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"0.6fr 1fr 1fr",gap:8}}>
 {fField("Puissance (kVA)","puissance","number",undefined,undefined,undefined)}
 {fField("Fourn. actuel","fournisseurActuel_elec","text",["",...FOURNISSEURS],undefined,undefined)}
 {fField("Fourn. proposé","fournisseurPropose_elec","text",["",...FOURNISSEURS],undefined,undefined)}
@@ -4467,7 +4467,7 @@ return(
     })}
   </div>);
 })()}
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Fourn. actuel","fournisseurActuel_gaz","text",["",...FOURNISSEURS],undefined,undefined)}
 {fField("Fourn. proposé","fournisseurPropose_gaz","text",["",...FOURNISSEURS],undefined,undefined)}
 </div>
@@ -4514,14 +4514,14 @@ return(
 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:isMobile?10:14}}>
 <div className="card">
 <Sec title="CLASSIFICATION" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:user.role!=="agent"?"1fr 1fr 1fr":"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":user.role!=="agent"?"1fr 1fr 1fr":"1fr 1fr",gap:8}}>
 {fField("Type de dossier","type","text",TYPES,undefined,undefined)}
 {fField("Statut","statut","text",STATUTS,undefined,undefined)}
 {user.role!=="agent"&&fField("Agent responsable","agentId","text",[{val:"",label:"-- Choisir --"},...agentsFull.map(a=>({val:a.id,label:a.nom}))],undefined,undefined)}
 </div>
 </Sec>
 <Sec title="ÉCHÉANCES" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Échéance Élec ⚡","dateEch_elec","date",undefined,undefined,undefined)}
 {fField("Échéance Gaz 🔥","dateEch_gaz","date",undefined,undefined,undefined)}
 </div>
@@ -4532,11 +4532,11 @@ return(
 const finContrat=(form.dateDebutContrat&&form.duree)?(()=>{const nd=new Date(form.dateDebutContrat);nd.setMonth(nd.getMonth()+parseInt(form.duree));return nd.toISOString().split("T")[0];})():null;
 const dateRappelNego=finContrat?(()=>{const nd=new Date(finContrat);nd.setMonth(nd.getMonth()-24);return nd.toISOString().split("T")[0];})():null;
 return(<>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
 {fField("Date de signature","dateSig","date",undefined,undefined,undefined)}
 {fField("Début du contrat","dateDebutContrat","date",undefined,undefined,"Date de prise d'effet du contrat signé")}
 </div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Durée contrat signé (mois)","duree","number",undefined,undefined,"Ex : 24, 36, 48 mois")}
 <div/>
 </div>
@@ -4554,7 +4554,7 @@ return(<>
 })()}
 </Sec>
 <Sec title="RGPD / ENEDIS" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:"0.7fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"0.7fr 1fr",gap:8}}>
 {fField("Autorisation Enedis","autorisationEnedis","text",["Non","En attente","Oui"],undefined,undefined)}
 {fField("Date réception RGPD","dateRgpd","date",undefined,undefined,undefined)}
 </div>
@@ -4564,7 +4564,7 @@ return(<>
 <div style={{fontSize:15,color:T.sub,marginBottom:14}}>Calcul de la valeur totale du dossier signé.</div>
 {(user.role==="admin"||user.role==="superadmin")
 ?<>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:8}}>
 {fField("CAR","valeur_car","number",undefined,"Volume annuel (MWh)")}
 {fField("Durée du contrat (mois)","valeur_duree","number",undefined,"12, 24, 36...")}
 {fField("Marge (€)","valeur_marge","number",undefined,"Marge unitaire")}
@@ -4593,7 +4593,7 @@ return valeurDossier>0?
 </div>
 <div className="card">
 <Sec title="SUIVI AGENT" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {fField("Date de prospection","datePro","date",undefined,undefined,undefined)}
 {fField("Date réception facture","dateFacture","date",undefined,undefined,undefined)}
 </div>
@@ -4604,7 +4604,7 @@ return valeurDossier>0?
 {fField("Date rappel reconquête","dateRappelPerte","date",undefined,undefined,undefined)}
 </Sec>}
 <Sec title="DOCUMENTS" T={T} color={JVc}>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
 {[["Facture actuelle","facture"],["RGPD signé","rgpd"],["Contrat signé","contrat"],["RIB","rib"],["Liasse fiscale","liasseFiscale"],["Lettre de résiliation","lettreResil"],["Autre document 1","autreDoc1"],["Autre document 2","autreDoc2"]].map(([lbl,key])=>{
 const doc=form.docs?.[key];
 const hasDoc=!!doc;
@@ -4764,12 +4764,14 @@ if(window.db.ready&&dossiersAgent.length>0){
   await window.db.upsert('prospects',rows).catch(e=>setSupaErrMsg&&setSupaErrMsg("Erreur transfert pool: "+e.message));
 }
 // 2. Supprimer l'agent dans Supabase
-if(window.db.ready) await window.db.del('agents','id',ag.id).catch(e=>setSupaErrMsg&&setSupaErrMsg("Erreur suppression agent: "+e.message));
+if(!window.db.ready){setSupaErrMsg("⚠ Supabase non connecté — suppression impossible.");return;}
+const okAgent=await window.db.del('agents','id',ag.id);
+if(!okAgent){setSupaErrMsg("❌ Erreur Supabase : suppression de l'agent échouée. Vérifiez les permissions.");return;}
 // 3. Supprimer le compte utilisateur lié
 const uLie=users.find(u=>u.agentId===ag.id);
 if(uLie){
   setUsers(us=>us.filter(u=>u.id!==uLie.id));
-  if(window.db.ready) window.db.del('crm_users','id',uLie.id).catch(()=>{});
+  await window.db.del('crm_users','id',uLie.id).catch(()=>{});
 }
 // 4. Mise à jour locale
 setProspects(ps=>ps.map(p=>p.agentId===ag.id?{...p,agentId:""}:p));
@@ -4985,7 +4987,18 @@ return(
                    log("Compte débloqué",u.login);
                  }} style={{background:"transparent",color:"#4ade80",border:"1px solid #4ade8055",borderRadius:4,fontSize:13,padding:"3px 10px",cursor:"pointer",fontWeight:700}}>🔓 Débloquer</button>
                )}
-               {u.id !== user.id && (user.role==="superadmin"||(user.role==="admin"&&u.role==="agent")) && <button onClick={async()=>{if(await showConfirm("Supprimer l'utilisateur "+u.login+" ?")) {setUsers(us=>us.filter(x=>x.id!==u.id));if(window.db.ready)window.db.del('crm_users','id',u.id).catch(e=>setSupaErrMsg("Erreur Supabase: "+e.message));log("Utilisateur supprimé",u.login);}}} style={{background:"transparent",color:"#f87171",border:"none",fontSize:14,cursor:"pointer",fontWeight:700}}>✕ Suppr.</button>}
+               {u.id !== user.id && (user.role==="superadmin"||(user.role==="admin"&&u.role==="agent")) && <button onClick={async()=>{
+  if(!await showConfirm("Supprimer l'utilisateur "+u.login+" ?")) return;
+  if(!window.db.ready){setSupaErrMsg("⚠ Supabase non connecté — suppression impossible.");return;}
+  setUsers(us=>us.filter(x=>x.id!==u.id));
+  const ok=await window.db.del('crm_users','id',u.id);
+  if(!ok){
+    setUsers(us=>[...us,u]);
+    setSupaErrMsg("❌ Erreur Supabase : suppression de "+u.login+" échouée. Vérifiez les permissions RLS.");
+    return;
+  }
+  log("Utilisateur supprimé",u.login);
+}} style={{background:"transparent",color:"#f87171",border:"none",fontSize:14,cursor:"pointer",fontWeight:700}}>✕ Suppr.</button>}
              </div>
           </div>
           <div style={{fontSize:20,fontWeight:700,marginBottom:4}}>{u.prenom} {u.nom}</div>
@@ -5044,12 +5057,12 @@ return(
         </select>
       </div>}
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:16}}>
          <div><div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>PRÉNOM</div><input className="field" value={formUser.prenom} onChange={e=>setFormUser(f=>({...f,prenom:e.target.value}))}/></div>
          <div><div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>NOM</div><input className="field" value={formUser.nom} onChange={e=>setFormUser(f=>({...f,nom:e.target.value}))}/></div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:16}}>
          <div><div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>IDENTIFIANT (LOGIN)</div><input className="field" value={formUser.login} onChange={e=>setFormUser(f=>({...f,login:e.target.value}))}/></div>
          <div><div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>MOT DE PASSE</div><input className="field" type="text" value={formUser.mdp} onChange={e=>setFormUser(f=>({...f,mdp:e.target.value}))}/></div>
       </div>
@@ -6606,7 +6619,7 @@ onChange={e=>setReglesTmp(r=>({...r,scorePoids:{...r.scorePoids,[key]:parseInt(e
 {Object.values(R.scorePoids).reduce((a,b)=>a+b,0)!==100&&<div style={{marginTop:10,fontSize:14,color:"#f87171",fontWeight:600}}> Le total doit être exactement 100 pour un calcul correct.</div>}
 <div style={{marginTop:20}}>
 <div style={{fontSize:15,fontWeight:600,marginBottom:12}}>Seuils CAR pour le calcul (MWh/an)</div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:10}}>
 {[
 {path:"carSeuilHaut",label:"Seuil haut (20 pts)",hint:"CAR ≥ X MWh"},
 {path:"carSeuilMoyen",label:"Seuil moyen (15 pts)",hint:"CAR ≥ X MWh"},
