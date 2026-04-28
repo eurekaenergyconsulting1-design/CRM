@@ -2669,10 +2669,13 @@ const fetchActu=async()=>{
   // Sans clé Claude → lire le briefing depuis Supabase avant de tomber sur le RSS
   if(window.db&&window.db.ready){
     try{
-      const rows=await window.db.select('config','*','key=eq.news_data');
-      if(rows&&rows[0]?.value){
-        const d=typeof rows[0].value==='string'?JSON.parse(rows[0].value):rows[0].value;
-        if(d&&d._ts&&(Date.now()-d._ts<60*60*1000)){setNewsData(d);setNewsLastFetch(d.date||'');return;}
+      const rows=await window.db.select('config',{});
+      if(rows&&rows.length){
+        const map={};rows.forEach(c=>{map[c.key]=c.value;});
+        if(map['news_data']){
+          const d=typeof map['news_data']==='string'?JSON.parse(map['news_data']):map['news_data'];
+          if(d&&d._ts&&(Date.now()-d._ts<60*60*1000)){setNewsData(d);setNewsLastFetch(d.date||'');return;}
+        }
       }
     }catch(e){}
   }
