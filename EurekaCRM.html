@@ -1374,6 +1374,8 @@ const[claudeTestResult,setClaudeTestResult]=useState(null);
 const[claudeTestLoading,setClaudeTestLoading]=useState(false);
 const[newsData,setNewsData]=useState(null);
 const[argDuJour,setArgDuJour]=useState({date:'',value:''});
+const argDuJourRef=useRef({date:'',value:''});
+const newsFetchingRef=useRef(false);
 const[customNewsRef,setCustomNewsRef]=useState({
   argument:"Dans ce contexte d'incertitude tarifaire, les entreprises qui anticipent leur renégociation économisent en moyenne 15 à 20%. Est-ce que votre contrat arrive à terme ?",
   conseil:"Concentrez vos appels sur les dossiers en fenêtre 0-12 mois — ce sont eux qui ont le plus à gagner aujourd'hui.",
@@ -2188,7 +2190,7 @@ async function load(){
         if(cfgMap['formation_scores']){try{setScores(JSON.parse(cfgMap['formation_scores']));}catch(e){}}
         if(cfgMap['claude_api_key']){const k=String(cfgMap['claude_api_key']||'');if(k&&k.startsWith('sk-ant-')){setClaudeKey(k);setClaudeKeyInput(k);try{localStorage.setItem('eureka_claude_key',k);}catch(e){}}}
         if(cfgMap['news_data']){try{const d=typeof cfgMap['news_data']==='string'?JSON.parse(cfgMap['news_data']):cfgMap['news_data'];if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);try{localStorage.setItem('eureka_news_cache',JSON.stringify(d));localStorage.setItem('eureka_news_ts',d.date);if(d._ts)localStorage.setItem('eureka_news_ts_ms',String(d._ts));}catch(e){}}}catch(e){}}
-        if(cfgMap['arg_du_jour']){try{const a=typeof cfgMap['arg_du_jour']==='string'?JSON.parse(cfgMap['arg_du_jour']):cfgMap['arg_du_jour'];if(a&&a.date&&a.value)setArgDuJour(a);}catch(e){}}
+        if(cfgMap['arg_du_jour']){try{const a=typeof cfgMap['arg_du_jour']==='string'?JSON.parse(cfgMap['arg_du_jour']):cfgMap['arg_du_jour'];if(a&&a.date&&a.value){setArgDuJour(a);argDuJourRef.current=a;}}catch(e){}}
       }
     }catch(e){}
     setSupaStatus('ok');
@@ -2573,14 +2575,17 @@ Promise.allSettled(feedsActifs.map(f=>fetchOneFeed(f))).then(results=>{
 // ─── Actualités IA — Claude Sonnet 4.6 + Web Search via Edge Function Supabase ──
 const fetchActualitesClaude = useCallback(async()=>{
   if(!claudeKey) return false;
+  // Guard anti-cascade : empêche les appels simultanés ou les boucles de re-render
+  if(newsFetchingRef.current) return false;
+  newsFetchingRef.current=true;
   setNewsLoading(true);
   const now=new Date();
   const dateStr=now.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const heureStr=now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
   const tsStr=dateStr+" à "+heureStr;
-  // Argument du jour — conservé toute la journée (Supabase, pas localStorage)
+  // Argument du jour — ref (pas state) pour éviter de recréer le callback
   const todayISO=now.toISOString().slice(0,10);
-  const hasArgAujourdhui=argDuJour.date===todayISO&&!!argDuJour.value;
+  const hasArgAujourdhui=argDuJourRef.current.date===todayISO&&!!argDuJourRef.current.value;
   try{
     const proxyUrl=(window._supaUrl||'https://qjruqilnevfdbzsobrmu.supabase.co')+'/functions/v1/claude-proxy';
     const resp=await fetch(proxyUrl,{
@@ -2623,9 +2628,10 @@ const fetchActualitesClaude = useCallback(async()=>{
     const secActu=parseSection(raw,"🔴"),secElec=parseSection(raw,"⚡"),secGaz=parseSection(raw,"🔥");
     const secCible=parseSection(raw,"🎯"),secConseil=parseSection(raw,"✅");
     // Argument du jour : réutiliser si déjà généré aujourd'hui, sinon sauvegarder dans Supabase
-    const secArg=hasArgAujourdhui?argDuJour.value:parseSection(raw,"💬");
+    const secArg=hasArgAujourdhui?argDuJourRef.current.value:parseSection(raw,"💬");
     if(!hasArgAujourdhui&&secArg){
       const newArg={date:todayISO,value:secArg};
+      argDuJourRef.current=newArg;
       setArgDuJour(newArg);
       if(window.db&&window.db.ready) window.db.upsert('config',[{key:'arg_du_jour',value:JSON.stringify(newArg)}]).catch(()=>{});
     }
@@ -2654,16 +2660,18 @@ const fetchActualitesClaude = useCallback(async()=>{
       window.db.upsert('config',[{key:'news_data',value:JSON.stringify(data)}]).catch(()=>{});
     }
     setNewsLoading(false);
+    newsFetchingRef.current=false;
     return true;
   }catch(err){
     setNewsLoading(false);
+    newsFetchingRef.current=false;
     return false;
   }
-},[claudeKey,argDuJour]);
+},[claudeKey]);
 
 useEffect(()=>{
 if(!user||vue!=="dashboard") return;
-function isHeuresOuvrables(){const n=new Date();const j=n.getDay();const h=n.getHours();return j>=1&&j<=5&&h>=8&&h<17;}
+function isHeuresOuvrables(){const n=new Date();const j=n.getDay();const h=n.getHours();return j>=1&&j<=5&&h>=6&&h<17;}
 const fetchActu=async()=>{
   if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});return;}
   // Sans clé Claude → lire le briefing depuis Supabase avant de tomber sur le RSS
@@ -2936,17 +2944,27 @@ return events;
 },[prospects,vueProspects,agents,calMois]);
 // ─── Navigation — réinitialisation systématique à chaque changement de page ──
 function resetPageState(){
+  const now=new Date();
+  const moisActuel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const anneeActuelle=now.getFullYear();
   // Filtres & recherche dossiers
   setRech("");
   setFiltreS("Tous");setFiltreT("Tous");setFiltreA("Tous");setFiltreU("Tous");setFiltreC("Tous");
   setFiltreMoisSig("Tous");
   setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
   setPageDoss(1);
-  // Formation
-  setModuleActif(null);setFormTab("suivi");setAgentFormActif(null);
-  // Calendrier
+  // Classement — retour au mois/année courants
+  setAnneeClass(anneeActuelle);setMoisClass(moisActuel);setPickerClassMode("nav");
+  // CA / Valeurs — retour à la période courante
+  setMoisCa(moisActuel);setAnneeCa(anneeActuelle);setVueCa("mensuel");setPickerCaMode("nav");
+  setProdDebut("");setProdFin("");setCaDebut("");setCaFin("");
+  // Calendrier — retour au mois courant
+  setCalMois(moisActuel);
   setCalDetail(null);setCalDate("");setCalNote("");
   setCalRechDossier("");setCalDdOpen(false);setCalDdSrch("");setCalDdVal("");
+  // Formation
+  setModuleActif(null);setFormTab("suivi");setAgentFormActif(null);
+  setNewModule({titre:"",categorie:"Prospection",description:"",contenu:""});setShowAddModule(false);
   // Rendez-vous / Préclos
   setShowFormPreclos(false);
   setFormPreclos({date:"",heure:"08:00",type:"préclos",numero:"",mail:"",note:"",entreprise:""});
@@ -2954,6 +2972,11 @@ function resetPageState(){
   setPoolSelection([]);setPoolMassAgent("");
   // Modales dashboard
   setShowRapportPreclos(false);setShowRapportSemaine(false);
+  // Divers
+  setNewAppel({date:"",resume:""});setShowAddAppel(false);
+  setDoublonMsg(null);
+  setEditPaliers(false);
+  setEmailEditId(null);setEmailEditTmp(null);
 }
 async function goNav(v){
 if(modeForm&&v!==vue){
@@ -7539,7 +7562,7 @@ return(
     </div>
     {claudeConfigured&&!testResult&&<div style={{padding:"8px 14px",borderRadius:8,marginBottom:10,background:"#05221555",border:"1px solid #22c55e33",fontSize:13,color:GRc,display:"flex",alignItems:"center",gap:8}}>
       <span style={{fontSize:15}}>🔒</span>
-      <span>Clé sauvegardée dans ce navigateur — elle reste active jusqu'à ce que vous la supprimiez manuellement.</span>
+      <span>Clé sauvegardée sur Supabase — visible par tous les superadmins après rechargement de la page.</span>
     </div>}
     {testResult&&<div style={{padding:"10px 14px",borderRadius:8,marginBottom:10,background:testResult.ok?"#05221555":"#2a080855",border:`1px solid ${testResult.ok?"#22c55e55":"#f8717155"}`,fontSize:14,color:testResult.ok?GRc:"#f87171",fontWeight:600}}>{testResult.msg}</div>}
     {claudeConfigured&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
