@@ -1373,6 +1373,7 @@ const[claudeKeyInput,setClaudeKeyInput]=useState(()=>localStorage.getItem('eurek
 const[claudeTestResult,setClaudeTestResult]=useState(null);
 const[claudeTestLoading,setClaudeTestLoading]=useState(false);
 const[newsData,setNewsData]=useState(null);
+const[argDuJour,setArgDuJour]=useState({date:'',value:''});
 const[customNewsRef,setCustomNewsRef]=useState({
   argument:"Dans ce contexte d'incertitude tarifaire, les entreprises qui anticipent leur renégociation économisent en moyenne 15 à 20%. Est-ce que votre contrat arrive à terme ?",
   conseil:"Concentrez vos appels sur les dossiers en fenêtre 0-12 mois — ce sont eux qui ont le plus à gagner aujourd'hui.",
@@ -2187,6 +2188,7 @@ async function load(){
         if(cfgMap['formation_scores']){try{setScores(JSON.parse(cfgMap['formation_scores']));}catch(e){}}
         if(cfgMap['claude_api_key']){const k=String(cfgMap['claude_api_key']||'');if(k&&k.startsWith('sk-ant-')){setClaudeKey(k);setClaudeKeyInput(k);try{localStorage.setItem('eureka_claude_key',k);}catch(e){}}}
         if(cfgMap['news_data']){try{const d=typeof cfgMap['news_data']==='string'?JSON.parse(cfgMap['news_data']):cfgMap['news_data'];if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);try{localStorage.setItem('eureka_news_cache',JSON.stringify(d));localStorage.setItem('eureka_news_ts',d.date);if(d._ts)localStorage.setItem('eureka_news_ts_ms',String(d._ts));}catch(e){}}}catch(e){}}
+        if(cfgMap['arg_du_jour']){try{const a=typeof cfgMap['arg_du_jour']==='string'?JSON.parse(cfgMap['arg_du_jour']):cfgMap['arg_du_jour'];if(a&&a.date&&a.value)setArgDuJour(a);}catch(e){}}
       }
     }catch(e){}
     setSupaStatus('ok');
@@ -2576,6 +2578,9 @@ const fetchActualitesClaude = useCallback(async()=>{
   const dateStr=now.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const heureStr=now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
   const tsStr=dateStr+" à "+heureStr;
+  // Argument du jour — conservé toute la journée (Supabase, pas localStorage)
+  const todayISO=now.toISOString().slice(0,10);
+  const hasArgAujourdhui=argDuJour.date===todayISO&&!!argDuJour.value;
   try{
     const proxyUrl=(window._supaUrl||'https://qjruqilnevfdbzsobrmu.supabase.co')+'/functions/v1/claude-proxy';
     const resp=await fetch(proxyUrl,{
@@ -2587,16 +2592,24 @@ const fetchActualitesClaude = useCallback(async()=>{
       },
       body:JSON.stringify({
         model:"claude-sonnet-4-6",
-        max_tokens:1500,
+        max_tokens:2000,
         tools:[{type:"web_search_20250305",name:"web_search"}],
         system:`Tu es l'assistant IA interne d'Eureka Energy Consulting, courtier en énergie B2B en France.\nChaque heure (Lun-Ven, 8h-17h), tu produis un briefing opérationnel pour les agents commerciaux qui prospectent des entreprises par téléphone.\n\n=== MISSION ===\nUtilise le web search pour rechercher AUJOURD'HUI :\n- Prix spot électricité EPEX (France)\n- Prix gaz TTF et PEG (France)\n- Niveau des stocks de gaz européens (AGSI)\n- Toute actualité géopolitique ou réglementaire impactant l'énergie en Europe\n- Décisions CRE, RTE, GRTgaz, Commission européenne\nSources prioritaires : EPEX SPOT, RTE, GRTgaz, AGSI, CRE, Energies Actu, Connaissance des Énergies, Reuters Energy, Les Échos Énergie.\n\n=== RÈGLES MÉTIER ABSOLUES ===\n1. FENÊTRE DE NÉGOCIATION : La loi française permet de renégocier un contrat énergie jusqu'à 24 mois avant son échéance. C'est un droit légal. Argument : "Vous pouvez agir maintenant, sans attendre l'échéance."\n2. TRV : Les entreprises au TRV peuvent résilier à tout moment avec 30 jours de préavis. Aucune pénalité. Argument : "Vous pouvez changer de fournisseur dès le mois prochain."\n3. CONTRATS MARCHÉ LIBRE : Durée standard 1-3 ans. Résiliation anticipée = pénalités. Exception : augmentation unilatérale du fournisseur → résiliation sans frais sous 30j.\n4. DONNÉES À COLLECTER : PDL (élec) ou PCE (gaz), consommation annuelle (MWh), date d'échéance du contrat, fournisseur actuel.\n\n=== RÈGLES DE CONTENU ===\nNe cite que des données vérifiées via le web search du jour. Si un prix est indisponible, écris "en cours d'actualisation". N'invente JAMAIS de chiffres. Ne promets jamais d'économies précises sans audit. Ne dis jamais que les prix "vont baisser". Sois dense et actionnable — max 250 mots.`,
-        messages:[{role:"user",content:`Date : ${dateStr}\nHeure : ${heureStr}\n\nEffectue une recherche web sur les prix et actualités du marché énergie en France et en Europe pour aujourd'hui. Génère ensuite le briefing complet pour les agents Eureka Energy en suivant EXACTEMENT ce format :\n\n🔴 ACTUALITÉ BRÛLANTE — [1 fait majeur du jour avec source]\n⚡ ÉLECTRICITÉ — [Prix EPEX du jour + tendance + impact prospect]\n🔥 GAZ — [Prix TTF/PEG du jour + tendance + impact prospect]\n🎯 CIBLE DU JOUR — [Profil d'entreprise à prioriser aujourd'hui et pourquoi]\n💬 ARGUMENT DU JOUR — [1 phrase percutante, vraie, à utiliser en appel]\n✅ CONSEIL OPÉRATIONNEL — [1 action concrète à faire maintenant]`}]
+        messages:[{role:"user",content:`Date : ${dateStr}\nHeure : ${heureStr}\n\nEffectue une recherche web sur les prix et actualités du marché énergie en France et en Europe pour aujourd'hui. Génère ensuite le briefing complet pour les agents Eureka Energy en suivant EXACTEMENT ce format :\n\n🔴 ACTUALITÉ BRÛLANTE — [1 fait majeur du jour avec source]\n⚡ ÉLECTRICITÉ — [Prix EPEX du jour + tendance + impact prospect]\n🔥 GAZ — [Prix TTF/PEG du jour + tendance + impact prospect]\n🎯 CIBLE DU JOUR — [Profil d'entreprise à prioriser aujourd'hui et pourquoi]\n${hasArgAujourdhui?'':'💬 ARGUMENT DU JOUR — [1 phrase percutante, vraie, à utiliser en appel]\n'}✅ CONSEIL OPÉRATIONNEL — [1 action concrète à faire maintenant]`}]
       })
     });
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`Erreur ${resp.status}`);}
     const d=await resp.json();
     // Extraire uniquement les blocs texte (le web search peut ajouter des blocs tool_use)
     const raw=(d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+    // Nettoyer le texte : supprimer markdown brut et artefacts web search
+    const clean=t=>t
+      .replace(/\*\*/g,"")
+      .replace(/\*/g,"")
+      .replace(/#{1,3}\s*/g,"")
+      .replace(/(\s*---+\s*#{0,3}\s*)+$/g,"")
+      .replace(/\s*---+\s*$/gm,"")
+      .trim();
     // Parser les sections emoji
     const parseSection=(txt,emoji)=>{
       const idx=txt.indexOf(emoji);if(idx===-1)return"";
@@ -2604,11 +2617,18 @@ const fetchActualitesClaude = useCallback(async()=>{
       const markers=["🔴","⚡","🔥","🎯","💬","✅"];
       let end=after.length;
       for(const m of markers){const p=after.indexOf(m,1);if(p!==-1&&p<end)end=p;}
-      return after.slice(0,end).replace(/^[^\n]+\n?/,"").trim();
+      return clean(after.slice(0,end).replace(/^[^\n]+\n?/,""));
     };
     const isRisque=t=>/hausse|risque|augment|tension|alerte|pénurie|conflit|gel|crisi|vola/i.test(t);
     const secActu=parseSection(raw,"🔴"),secElec=parseSection(raw,"⚡"),secGaz=parseSection(raw,"🔥");
-    const secCible=parseSection(raw,"🎯"),secArg=parseSection(raw,"💬"),secConseil=parseSection(raw,"✅");
+    const secCible=parseSection(raw,"🎯"),secConseil=parseSection(raw,"✅");
+    // Argument du jour : réutiliser si déjà généré aujourd'hui, sinon sauvegarder dans Supabase
+    const secArg=hasArgAujourdhui?argDuJour.value:parseSection(raw,"💬");
+    if(!hasArgAujourdhui&&secArg){
+      const newArg={date:todayISO,value:secArg};
+      setArgDuJour(newArg);
+      if(window.db&&window.db.ready) window.db.upsert('config',[{key:'arg_du_jour',value:JSON.stringify(newArg)}]).catch(()=>{});
+    }
     const points=[
       secActu&&{titre:"🔴 Actualité brûlante",detail:secActu,impact:isRisque(secActu)?"risque":"opportunité",source:"Web Search"},
       secElec&&{titre:"⚡ Électricité",detail:secElec,impact:isRisque(secElec)?"risque":"opportunité",source:"EPEX SPOT"},
@@ -2617,6 +2637,7 @@ const fetchActualitesClaude = useCallback(async()=>{
     ].filter(Boolean);
     // Fallback si le parsing de sections échoue
     if(!points.length&&raw) points.push({titre:"Briefing énergie",detail:raw,impact:"opportunité",source:"Claude Sonnet"});
+    const prevTsMs=parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
     const data={
       date:tsStr,_ts:Date.now(),
       resume:`🌐 Briefing Claude Sonnet — Web Search — ${tsStr}`,
@@ -2628,14 +2649,17 @@ const fetchActualitesClaude = useCallback(async()=>{
     };
     setNewsData(data);
     try{localStorage.setItem('eureka_news_cache',JSON.stringify(data));localStorage.setItem('eureka_news_ts',tsStr);localStorage.setItem('eureka_news_ts_ms',String(data._ts));setNewsLastFetch(tsStr);}catch(e){}
-    if(window.db&&window.db.ready) window.db.upsert('config',[{key:'news_data',value:JSON.stringify(data)}]).catch(()=>{});
+    // Ne sauvegarder sur Supabase que si >45 min depuis la dernière sauvegarde (évite les tokens inutiles)
+    if((!prevTsMs||(data._ts-prevTsMs>45*60*1000))&&window.db&&window.db.ready){
+      window.db.upsert('config',[{key:'news_data',value:JSON.stringify(data)}]).catch(()=>{});
+    }
     setNewsLoading(false);
     return true;
   }catch(err){
     setNewsLoading(false);
     return false;
   }
-},[claudeKey]);
+},[claudeKey,argDuJour]);
 
 useEffect(()=>{
 if(!user||vue!=="dashboard") return;
