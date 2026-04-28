@@ -2817,7 +2817,7 @@ const ok2=filtreS==="Tous"||p.statut===filtreS;
 const ok3=filtreT==="Tous"||p.type===filtreT;
 const ok4=filtreA==="Tous"||p.agentId===filtreA;
 const u=getUrgence(p.dateEch_elec,p.dateEch_gaz);
-const ok5=filtreU==="Tous"||(filtreU==="neg"&&u?.prio>=4)||(filtreU==="bien"&&u?.prio===3)||(filtreU==="loin"&&u?.prio===1)||(filtreU==="sansAcd"&&(!p.dateRgpd||p.dateRgpd.trim()===""));
+const ok5=filtreU==="Tous"||(filtreU==="neg"&&u?.prio>=4)||(filtreU==="bien"&&u?.prio===3)||(filtreU==="loin"&&u?.prio===1)||(filtreU==="sansAcd"&&(!p.dateRgpd||p.dateRgpd.trim()===""))||(filtreU==="ech_depassee"&&u?.prio===0);
 const ok6=filtreC==="Tous"||(filtreC==="Client"&&p.statut==="Signé")||(filtreC==="Prospect"&&p.statut!=="Signé");
 const ok7=filtreMoisSig==="Tous"||(p.dateSig&&p.dateSig.startsWith(filtreMoisSig));
 // Calibrage : référence = datePro (date d'enregistrement)
@@ -4046,7 +4046,7 @@ onClick={()=>setShowCalibPicker("dossiers")}>{(calibDebut||calibFin)?"Modifier c
 <>
 <select className="field" style={{width:"calc(50% - 4px)"}} value={filtreS} onChange={e=>setFiltreS(e.target.value)}><option>Tous</option>{STATUTS.map(s=><option key={s}>{s}</option>)}</select>
 <select className="field" style={{width:"calc(50% - 4px)"}} value={filtreU} onChange={e=>setFiltreU(e.target.value)}>
-<option value="Tous">Tous statuts</option><option value="neg">Négociable</option><option value="bien">Bientôt</option><option value="sansAcd">Sans ACD</option>
+<option value="Tous">Tous statuts</option><option value="neg">Négociable</option><option value="bien">Bientôt</option><option value="ech_depassee">Éch. dépassée</option><option value="sansAcd">Sans ACD</option>
 </select>
 {!isMobile&&<select className="field" style={{width:"calc(50% - 4px)"}} value={filtreA} onChange={e=>setFiltreA(e.target.value)}><option value="Tous">Tous agents</option>{agentsFull.map(a=><option key={a.id} value={a.id}>{a.nom}</option>)}</select>}
 </>
@@ -4058,7 +4058,7 @@ onClick={()=>setShowCalibPicker("dossiers")}>{(calibDebut||calibFin)?"Modifier c
 <select className="field" style={{width:140}} value={filtreT} onChange={e=>setFiltreT(e.target.value)}><option>Tous</option>{TYPES.map(t=><option key={t}>{t}</option>)}</select>
 <select className="field" style={{width:150}} value={filtreA} onChange={e=>setFiltreA(e.target.value)}><option value="Tous">Tous agents</option>{agentsFull.map(a=><option key={a.id} value={a.id}>{a.nom}</option>)}</select>
 <select className="field" style={{width:180}} value={filtreU} onChange={e=>setFiltreU(e.target.value)}>
-<option value="Tous">Tous statuts</option><option value="neg">Négociable maintenant</option><option value="bien">Bientôt négociable</option><option value="loin">Lointain</option><option value="sansAcd">Sans ACD</option>
+<option value="Tous">Tous statuts</option><option value="neg">Négociable maintenant</option><option value="bien">Bientôt négociable</option><option value="loin">Lointain</option><option value="ech_depassee">Échéance dépassée</option><option value="sansAcd">Sans ACD</option>
 </select>
 </>
 )}
