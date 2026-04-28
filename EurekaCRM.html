@@ -2568,7 +2568,7 @@ Promise.allSettled(feedsActifs.map(f=>fetchOneFeed(f))).then(results=>{
 }).catch(()=>setNewsLoading(false));
 },[actuFeeds]);
 
-// ─── Actualités IA — Claude Haiku 4.5 via Edge Function Supabase ─────────────
+// ─── Actualités IA — Claude Sonnet 4.6 + Web Search via Edge Function Supabase ──
 const fetchActualitesClaude = useCallback(async()=>{
   if(!claudeKey) return false;
   setNewsLoading(true);
@@ -2586,24 +2586,44 @@ const fetchActualitesClaude = useCallback(async()=>{
         "content-type":"application/json"
       },
       body:JSON.stringify({
-        model:"claude-haiku-4-5-20251001",
-        max_tokens:1200,
-        system:`Tu es l'assistant IA interne d'Eureka Energy Consulting, spécialisé dans la vente de contrats d'énergie (électricité et gaz naturel) aux professionnels en France.\nTon rôle : produire chaque heure un briefing opérationnel court, factuel et directement utilisable par les agents commerciaux pour prospecter efficacement aujourd'hui.\n\n=== RÈGLES MÉTIER ABSOLUES ===\n1. FENÊTRE DE NÉGOCIATION : La loi française permet à toute entreprise de renégocier son contrat d'énergie jusqu'à 24 mois AVANT l'échéance. Cible prioritaire : contrats se terminant dans les 24 prochains mois. Argument clé : "Vous pouvez agir maintenant, sans attendre l'échéance."\n2. TARIF RÉGLEMENTÉ (TRV) : Résiliation à tout moment avec 30 jours de préavis, sans pénalité. Argument clé : "Vous pouvez changer demain si vous le souhaitez."\n3. OFFRES DE MARCHÉ : Contrats prix fixe 1-3 ans. Résiliation anticipée = pénalités SAUF si fournisseur augmente le prix unilatéralement (résiliation sous 30j sans frais).\n4. ÉLIGIBILITÉ : Plus de 36 kVA en électricité ou plus de 300 MWh/an en gaz permet de mettre les fournisseurs en concurrence.\n5. DONNÉES POUR UN AUDIT : PDL (élec) ou PCE (gaz), consommation annuelle, date échéance contrat actuel, fournisseur actuel.\n\n=== RÈGLES DE CONTENU ===\nN'affirme que ce que tu sais être vrai. Si données prix absentes, écris "données en cours d'actualisation". N'invente JAMAIS de prix ou chiffres. Ne promets jamais d'économies précises sans audit. Longueur max : 250 mots au total. N'utilise jamais de superlatifs vides sans faits. Ne dis jamais que les prix "vont forcément baisser".\n\n=== CONTEXTE EUREKA ===\nEureka Energy Consulting est un courtier énergie B2B — pas fournisseur. Nous comparons et négocions pour le compte de PME, ETI et collectivités. Les agents prospectent par téléphone. Le briefing sert d'accroche d'appel et de contexte pour répondre aux objections terrain.`,
-        messages:[{role:"user",content:`Date : ${dateStr} — Heure : ${heureStr}\n\nGénère le briefing marché énergie du moment pour les agents Eureka Energy.\nBase-toi sur les données de marché les plus récentes disponibles dans ta connaissance.\nSi tu n'as pas de données temps réel sur un prix précis, indique "données en cours d'actualisation" — ne jamais inventer de chiffre.\n\nRéponds UNIQUEMENT avec ce JSON valide (sans markdown ni texte autour) :\n{"points":[{"titre":"🔴 Actualité brûlante","detail":"[fait majeur du marché énergie du jour]","impact":"risque","source":"Analyse IA"},{"titre":"⚡ Électricité","detail":"[prix EPEX SPOT, nucléaire EDF, renouvelables — tendance et impact prospect]","impact":"risque|opportunité","source":"EPEX"},{"titre":"🔥 Gaz naturel","detail":"[prix TTF/PEG, stockages européens, LNG, géopolitique — tendance et impact prospect]","impact":"risque|opportunité","source":"TTF/PEG"},{"titre":"🎯 Cible du jour","detail":"[profil d'entreprise à prioriser aujourd'hui et pourquoi]","impact":"opportunité","source":"Analyse IA"}],"argument_du_jour":"[1 phrase percutante fondée sur une règle légale réelle ou l'actu du jour, pour convaincre un dirigeant PME de revoir son contrat énergie]","conseil":"[1 action concrète et immédiate pour les téléprospecteurs aujourd'hui]","tendance":"hausse|baisse|stable"}`}]
+        model:"claude-sonnet-4-6",
+        max_tokens:1500,
+        tools:[{type:"web_search_20250305",name:"web_search"}],
+        system:`Tu es l'assistant IA interne d'Eureka Energy Consulting, courtier en énergie B2B en France.\nChaque heure (Lun-Ven, 8h-17h), tu produis un briefing opérationnel pour les agents commerciaux qui prospectent des entreprises par téléphone.\n\n=== MISSION ===\nUtilise le web search pour rechercher AUJOURD'HUI :\n- Prix spot électricité EPEX (France)\n- Prix gaz TTF et PEG (France)\n- Niveau des stocks de gaz européens (AGSI)\n- Toute actualité géopolitique ou réglementaire impactant l'énergie en Europe\n- Décisions CRE, RTE, GRTgaz, Commission européenne\nSources prioritaires : EPEX SPOT, RTE, GRTgaz, AGSI, CRE, Energies Actu, Connaissance des Énergies, Reuters Energy, Les Échos Énergie.\n\n=== RÈGLES MÉTIER ABSOLUES ===\n1. FENÊTRE DE NÉGOCIATION : La loi française permet de renégocier un contrat énergie jusqu'à 24 mois avant son échéance. C'est un droit légal. Argument : "Vous pouvez agir maintenant, sans attendre l'échéance."\n2. TRV : Les entreprises au TRV peuvent résilier à tout moment avec 30 jours de préavis. Aucune pénalité. Argument : "Vous pouvez changer de fournisseur dès le mois prochain."\n3. CONTRATS MARCHÉ LIBRE : Durée standard 1-3 ans. Résiliation anticipée = pénalités. Exception : augmentation unilatérale du fournisseur → résiliation sans frais sous 30j.\n4. DONNÉES À COLLECTER : PDL (élec) ou PCE (gaz), consommation annuelle (MWh), date d'échéance du contrat, fournisseur actuel.\n\n=== RÈGLES DE CONTENU ===\nNe cite que des données vérifiées via le web search du jour. Si un prix est indisponible, écris "en cours d'actualisation". N'invente JAMAIS de chiffres. Ne promets jamais d'économies précises sans audit. Ne dis jamais que les prix "vont baisser". Sois dense et actionnable — max 250 mots.`,
+        messages:[{role:"user",content:`Date : ${dateStr}\nHeure : ${heureStr}\n\nEffectue une recherche web sur les prix et actualités du marché énergie en France et en Europe pour aujourd'hui. Génère ensuite le briefing complet pour les agents Eureka Energy en suivant EXACTEMENT ce format :\n\n🔴 ACTUALITÉ BRÛLANTE — [1 fait majeur du jour avec source]\n⚡ ÉLECTRICITÉ — [Prix EPEX du jour + tendance + impact prospect]\n🔥 GAZ — [Prix TTF/PEG du jour + tendance + impact prospect]\n🎯 CIBLE DU JOUR — [Profil d'entreprise à prioriser aujourd'hui et pourquoi]\n💬 ARGUMENT DU JOUR — [1 phrase percutante, vraie, à utiliser en appel]\n✅ CONSEIL OPÉRATIONNEL — [1 action concrète à faire maintenant]`}]
       })
     });
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`Erreur ${resp.status}`);}
     const d=await resp.json();
-    const raw=(d.content?.[0]?.text||"").trim();
-    const jsonMatch=raw.match(/\{[\s\S]*\}/);
-    const parsed=JSON.parse(jsonMatch?jsonMatch[0]:raw);
+    // Extraire uniquement les blocs texte (le web search peut ajouter des blocs tool_use)
+    const raw=(d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+    // Parser les sections emoji
+    const parseSection=(txt,emoji)=>{
+      const idx=txt.indexOf(emoji);if(idx===-1)return"";
+      const after=txt.slice(idx);
+      const markers=["🔴","⚡","🔥","🎯","💬","✅"];
+      let end=after.length;
+      for(const m of markers){const p=after.indexOf(m,1);if(p!==-1&&p<end)end=p;}
+      return after.slice(0,end).replace(/^[^\n]+\n?/,"").trim();
+    };
+    const isRisque=t=>/hausse|risque|augment|tension|alerte|pénurie|conflit|gel|crisi|vola/i.test(t);
+    const secActu=parseSection(raw,"🔴"),secElec=parseSection(raw,"⚡"),secGaz=parseSection(raw,"🔥");
+    const secCible=parseSection(raw,"🎯"),secArg=parseSection(raw,"💬"),secConseil=parseSection(raw,"✅");
+    const points=[
+      secActu&&{titre:"🔴 Actualité brûlante",detail:secActu,impact:isRisque(secActu)?"risque":"opportunité",source:"Web Search"},
+      secElec&&{titre:"⚡ Électricité",detail:secElec,impact:isRisque(secElec)?"risque":"opportunité",source:"EPEX SPOT"},
+      secGaz&&{titre:"🔥 Gaz naturel",detail:secGaz,impact:isRisque(secGaz)?"risque":"opportunité",source:"TTF/PEG"},
+      secCible&&{titre:"🎯 Cible du jour",detail:secCible,impact:"opportunité",source:"Analyse IA"},
+    ].filter(Boolean);
+    // Fallback si le parsing de sections échoue
+    if(!points.length&&raw) points.push({titre:"Briefing énergie",detail:raw,impact:"opportunité",source:"Claude Sonnet"});
     const data={
       date:tsStr,_ts:Date.now(),
-      resume:`🤖 Briefing IA Claude Haiku — ${tsStr}`,
-      points:(parsed.points||[]).slice(0,5).map(p=>({...p,source:p.source||"Analyse IA"})),
-      argument_du_jour:parsed.argument_du_jour||"",
-      conseil:parsed.conseil||"",
-      tendance:parsed.tendance||"stable",
+      resume:`🌐 Briefing Claude Sonnet — Web Search — ${tsStr}`,
+      points,
+      argument_du_jour:secArg||"",
+      conseil:secConseil||"",
+      tendance:isRisque(raw)?"hausse":"stable",
       isLive:true,isClaude:true
     };
     setNewsData(data);
@@ -2874,44 +2894,59 @@ if(p.dateRappelClient) addEv(p.dateRappelClient,{type:"rappel",label:`Rappel —
 });
 return events;
 },[prospects,vueProspects,agents,calMois]);
-// ─── Navigation ──────────────────────────────────
+// ─── Navigation — réinitialisation systématique à chaque changement de page ──
+function resetPageState(){
+  // Filtres & recherche dossiers
+  setRech("");
+  setFiltreS("Tous");setFiltreT("Tous");setFiltreA("Tous");setFiltreU("Tous");setFiltreC("Tous");
+  setFiltreMoisSig("Tous");
+  setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
+  setPageDoss(1);
+  // Formation
+  setModuleActif(null);setFormTab("suivi");setAgentFormActif(null);
+  // Calendrier
+  setCalDetail(null);setCalDate("");setCalNote("");
+  setCalRechDossier("");setCalDdOpen(false);setCalDdSrch("");setCalDdVal("");
+  // Rendez-vous / Préclos
+  setShowFormPreclos(false);
+  setFormPreclos({date:"",heure:"08:00",type:"préclos",numero:"",mail:"",note:"",entreprise:""});
+  // Pool
+  setPoolSelection([]);setPoolMassAgent("");
+  // Modales dashboard
+  setShowRapportPreclos(false);setShowRapportSemaine(false);
+}
 async function goNav(v){
 if(modeForm&&v!==vue){
   if(!await showConfirm("Vous avez des modifications en cours.\nQuitter sans enregistrer ?")) return;
 }
 try{sessionStorage.setItem("eureka_vue",v);}catch(e){}
 setVue(v);setProsp(null);setAgentVu(null);setModeForm(null);setEditMode(false);setFicheTab("societe");setNavBack(null);
-setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
-if(v==="prospects"){setFiltreMoisSig("Tous");}
-if(v!=="formation"){setAgentFormActif(null);}
+resetPageState();
 }
 // ─── Nouvel onglet : Ctrl+Click sur nav ou dossier ───────────────────────────
 function makeTabUrl(v,dossId){const base=window.location.href.split('#')[0];return dossId?`${base}#dossier=${dossId}`:`${base}#vue=${v}`;}
 // Navigation avec contexte de retour
 function goNavAvecRetour(destination,retourVue,retourLabel){
 setVue(destination);setNavBack({vue:retourVue,label:retourLabel});
-setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
+resetPageState();
 }
 function goRetour(){
-if(navBack){setVue(navBack.vue);setNavBack(null);setAgentVu(null);}
+if(navBack){setVue(navBack.vue);setNavBack(null);setAgentVu(null);resetPageState();}
 else goNav("dashboard");
-setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 }
 function goFiltre(s,u){
-setFiltreS("Tous");setFiltreT("Tous");setFiltreU("Tous");setFiltreA("Tous");setFiltreC("Tous");setFiltreMoisSig("Tous");setRech("");
-setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
+resetPageState();
 if(s)setFiltreS(s); if(u)setFiltreU(u);
 setVue("prospects");setProsp(null);setModeForm(null);
 }
 function goFiltreCa(d){
-setFiltreS("Signé");setFiltreT("Tous");setFiltreU("Tous");setFiltreA("Tous");setFiltreC("Tous");setRech("");
-setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
-setFiltreMoisSig(d);
+resetPageState();
+setFiltreS("Signé");setFiltreMoisSig(d);
 setVue("prospects");setProsp(null);setModeForm(null);
 }
 function goSansAcd(){
-setFiltreS("Tous");setFiltreT("Tous");setFiltreU("sansAcd");setFiltreA("Tous");setFiltreC("Tous");setFiltreMoisSig("Tous");setRech("");
-setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
+resetPageState();
+setFiltreU("sansAcd");
 setVue("prospects");setProsp(null);setModeForm(null);
 }
 // ─── CRUD ────────────────────────────────────────
@@ -7421,9 +7456,9 @@ const testerClaude=async()=>{
     const r=await fetch(proxyUrl,{
       method:"POST",
       headers:{"Authorization":"Bearer "+(window._supaKey||''),"x-anthropic-key":key,"content-type":"application/json"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:10,messages:[{role:"user",content:"OK"}]})
+      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:10,messages:[{role:"user",content:"OK"}]})
     });
-    if(r.ok){setTestResult({ok:true,msg:"Connexion réussie via Edge Function — Claude Haiku 4.5 opérationnel ✓"});}
+    if(r.ok){setTestResult({ok:true,msg:"Connexion réussie via Edge Function — Claude Sonnet 4.6 opérationnel ✓"});}
     else{const e=await r.json().catch(()=>({}));setTestResult({ok:false,msg:e.error?.message||`Erreur HTTP ${r.status}`});}
   }catch(e){setTestResult({ok:false,msg:"Erreur réseau : "+e.message});}
   setTestLoading(false);
@@ -7438,7 +7473,7 @@ return(
     </div>
     <div style={{fontSize:14,color:T.sub,marginBottom:14,lineHeight:1.7}}>
       Connectez votre clé API Anthropic pour activer le <strong style={{color:T.text}}>briefing IA</strong> du widget Actualités.{" "}
-      Modèle : <code style={{background:T.bg3,padding:"1px 6px",borderRadius:4,fontSize:13}}>claude-haiku-4-5-20251001</code> — coût estimé <strong style={{color:"#a78bfa"}}>~$0,55/mois</strong>.
+      Modèle : <code style={{background:T.bg3,padding:"1px 6px",borderRadius:4,fontSize:13}}>claude-sonnet-4-6</code> + Web Search — coût estimé <strong style={{color:"#a78bfa"}}>~$1,64/mois</strong>.
     </div>
     <div style={{marginBottom:14}}>
       <div style={{fontSize:12,color:T.muted,fontWeight:700,marginBottom:6,letterSpacing:".1em"}}>CLÉ API (sk-ant-api03-...)</div>
