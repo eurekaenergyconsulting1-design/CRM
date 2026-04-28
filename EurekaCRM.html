@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -637,7 +637,7 @@ return {valid:true, label:`RGPD valide (${jours}j)`, color:GRc,bg:"#0a2010",expi
 function getRappel(d){
 if(!d) return null;
 const j=Math.ceil((new Date(d)-new Date())/(1000*60*60*24));
-if(j<0) return {label:`Rappel en retard (${Math.abs(j)}j)`,color:"#f87171",urgent:true};
+if(j<0) return {label:`Rappel en retard (${Math.abs(j)}j)`,color:"#f87171",urgent:false};
 if(j===0)return {label:"Rappel aujourd'hui",color:JV,urgent:true};
 if(j<=3) return {label:`Rappel dans ${j} jour(s)`,color:"#fbbf24",urgent:false};
 return {label:`Rappel le ${fmtDate(d)}`,color:"#8892be",urgent:false};
@@ -908,21 +908,39 @@ style={{display:"flex",alignItems:"center",gap:(typeof window!=="undefined"&&win
 </div>
 );
 }
+// ─── Sonnerie RDV (Web Audio API) ────────────────────────────────────────
+function playBeep(){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    [[440,0],[550,0.15],[660,0.3]].forEach(([freq,t])=>{
+      const osc=ctx.createOscillator();const gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.frequency.value=freq;osc.type="sine";
+      gain.gain.setValueAtTime(0,ctx.currentTime+t);
+      gain.gain.linearRampToValueAtTime(0.3,ctx.currentTime+t+0.05);
+      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+t+0.25);
+      osc.start(ctx.currentTime+t);osc.stop(ctx.currentTime+t+0.3);
+    });
+  }catch(e){}
+}
 // ─── COMPOSANT DateRangePicker ────────────────────────
 function DateRangePicker({debut, fin, onChange, onClose, T:Tp}){
-  // Popup fond sombre fixe → textes toujours clairs (dark mode colors)
   const T={...Tp,text:"#e8eaf6",sub:"#c8d0f0",muted:"#8892be",bord:"#1e2d5e"};
   const nw=new Date();
+  // Calendrier GAUCHE (début)
   const [leftY,setLeftY]=useState(()=>debut?new Date(debut).getFullYear():nw.getFullYear());
   const [leftM,setLeftM]=useState(()=>debut?new Date(debut).getMonth():nw.getMonth());
+  // Calendrier DROIT (fin) — indépendant du gauche
+  const [rightY,setRightY]=useState(()=>{const base=fin?new Date(fin):new Date(nw.getFullYear(),nw.getMonth()+1,1);return base.getFullYear();});
+  const [rightM,setRightM]=useState(()=>{const base=fin?new Date(fin):new Date(nw.getFullYear(),nw.getMonth()+1,1);return base.getMonth();});
   const [tmpDebut,setTmpDebut]=useState(debut||"");
   const [tmpFin,setTmpFin]=useState(fin||"");
   const [hovDate,setHovDate]=useState(null);
-  const rightM=leftM===11?0:leftM+1;
-  const rightY=leftM===11?leftY+1:leftY;
   const MOIS_N2=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-  function prevMth(){if(leftM===0){setLeftY(y=>y-1);setLeftM(11);}else setLeftM(m=>m-1);}
-  function nextMth(){if(leftM===11){setLeftY(y=>y+1);setLeftM(0);}else setLeftM(m=>m+1);}
+  function prevL(){if(leftM===0){setLeftY(y=>y-1);setLeftM(11);}else setLeftM(m=>m-1);}
+  function nextL(){if(leftM===11){setLeftY(y=>y+1);setLeftM(0);}else setLeftM(m=>m+1);}
+  function prevR(){if(rightM===0){setRightY(y=>y-1);setRightM(11);}else setRightM(m=>m-1);}
+  function nextR(){if(rightM===11){setRightY(y=>y+1);setRightM(0);}else setRightM(m=>m+1);}
   function dayStr(y,m,d){return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;}
   function handleDay(ds){
     if(!tmpDebut||(tmpDebut&&tmpFin)){setTmpDebut(ds);setTmpFin("");}
@@ -935,7 +953,7 @@ function DateRangePicker({debut, fin, onChange, onClose, T:Tp}){
     const lo=d<f?d:f,hi=d<f?f:d;
     return ds>=lo&&ds<=hi;
   }
-  function renderMonth(y,m){
+  function renderMonth(y,m,onPrev,onNext){
     const days=new Date(y,m+1,0).getDate();
     let fw=new Date(y,m,1).getDay(); fw=fw===0?6:fw-1;
     const cells=[];
@@ -944,7 +962,11 @@ function DateRangePicker({debut, fin, onChange, onClose, T:Tp}){
     const today=new Date().toISOString().split("T")[0];
     return(
       <div style={{flex:1,minWidth:200}}>
-        <div style={{textAlign:"center",fontWeight:700,fontSize:15,color:T.text,marginBottom:10}}>{MOIS_N2[m]} {y}</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10}}>
+          <button className="btn-ghost" style={{padding:"3px 10px",fontSize:16,flexShrink:0}} onClick={onPrev}>‹</button>
+          <span style={{fontWeight:700,fontSize:15,color:T.text,whiteSpace:"nowrap"}}>{MOIS_N2[m]} {y}</span>
+          <button className="btn-ghost" style={{padding:"3px 10px",fontSize:16,flexShrink:0}} onClick={onNext}>›</button>
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
           {["L","M","M","J","V","S","D"].map((d,i)=>(
             <div key={i} style={{textAlign:"center",fontSize:14,color:T.muted,fontWeight:700,padding:"4px 0"}}>{d}</div>
@@ -976,13 +998,9 @@ function DateRangePicker({debut, fin, onChange, onClose, T:Tp}){
       onClick={onClose}>
       <div style={{background:"linear-gradient(135deg,#0f1630,#07091a)",border:`2px solid ${JV}55`,borderTop:`3px solid ${JV}`,borderRadius:16,padding:24,boxShadow:`0 20px 60px #000000cc,0 0 30px ${JV}22`,maxWidth:"94vw"}}
         onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:20}}>
-          <button className="btn-ghost" style={{padding:"6px 12px",flexShrink:0}} onClick={prevMth}>‹</button>
-          <div style={{display:"flex",gap:32,flex:1}}>
-            {renderMonth(leftY,leftM)}
-            {renderMonth(rightY,rightM)}
-          </div>
-          <button className="btn-ghost" style={{padding:"6px 12px",flexShrink:0}} onClick={nextMth}>›</button>
+        <div style={{display:"flex",gap:32,marginBottom:20,flexWrap:"wrap"}}>
+          {renderMonth(leftY,leftM,prevL,nextL)}
+          {renderMonth(rightY,rightM,prevR,nextR)}
         </div>
         {/* Saisie manuelle */}
         <div style={{display:"flex",gap:10,marginTop:12,padding:"12px 0",borderTop:`1px solid ${T.bord}`,alignItems:"center",flexWrap:"wrap"}}>
@@ -990,7 +1008,7 @@ function DateRangePicker({debut, fin, onChange, onClose, T:Tp}){
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <span style={{fontSize:13,color:T.sub}}>Début</span>
             <input type="date" className="field" style={{width:150,padding:"6px 10px",fontSize:13}} value={tmpDebut}
-              onChange={e=>{setTmpDebut(e.target.value);if(e.target.value) setLeftY(new Date(e.target.value).getFullYear());}}/>
+              onChange={e=>setTmpDebut(e.target.value)}/>
           </div>
           <span style={{color:T.muted}}>—</span>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -1351,7 +1369,9 @@ const[editPaliers,setEditPaliers]=useState(false);
 const[paliersTmp,setPaliersTmp]=useState(PALIERS_DEF);
 const[newsOuvert,setNewsOuvert]=useState(true);
 const[claudeKey,setClaudeKey]=useState(()=>localStorage.getItem('eureka_claude_key')||'');
-const[claudeKeyInput,setClaudeKeyInput]=useState('');
+const[claudeKeyInput,setClaudeKeyInput]=useState(()=>localStorage.getItem('eureka_claude_key')||'');
+const[claudeTestResult,setClaudeTestResult]=useState(null);
+const[claudeTestLoading,setClaudeTestLoading]=useState(false);
 const[newsData,setNewsData]=useState(null);
 const[customNewsRef,setCustomNewsRef]=useState({
   argument:"Dans ce contexte d'incertitude tarifaire, les entreprises qui anticipent leur renégociation économisent en moyenne 15 à 20%. Est-ce que votre contrat arrive à terme ?",
@@ -2112,6 +2132,7 @@ const[calDate,setCalDate]=useState("");
 const[calNote,setCalNote]=useState("");
 // ─── Préclos / Rendez-vous — Supabase (synchronisé multi-agents) ──────────
 const[rappelsPreclos,setRappelsPreclos]=useState([]);
+const[tickNow,setTickNow]=useState(0);
 const[showRapportPreclos,setShowRapportPreclos]=useState(false);
 const[showRapportSemaine,setShowRapportSemaine]=useState(false);
 const[rapportSemaineData,setRapportSemaineData]=useState(null);
@@ -2164,6 +2185,8 @@ async function load(){
         if(cfgMap['paliers']){try{const p=JSON.parse(cfgMap['paliers']);if(Array.isArray(p)&&p.length>0){setPaliers(p);setPaliersTmp(p);}}catch(e){}}
         // ─── Scores formation — Supabase (source de vérité) ───────────────────
         if(cfgMap['formation_scores']){try{setScores(JSON.parse(cfgMap['formation_scores']));}catch(e){}}
+        if(cfgMap['claude_api_key']){const k=String(cfgMap['claude_api_key']||'');if(k&&k.startsWith('sk-ant-')){setClaudeKey(k);setClaudeKeyInput(k);try{localStorage.setItem('eureka_claude_key',k);}catch(e){}}}
+        if(cfgMap['news_data']){try{const d=typeof cfgMap['news_data']==='string'?JSON.parse(cfgMap['news_data']):cfgMap['news_data'];if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);try{localStorage.setItem('eureka_news_cache',JSON.stringify(d));localStorage.setItem('eureka_news_ts',d.date);if(d._ts)localStorage.setItem('eureka_news_ts_ms',String(d._ts));}catch(e){}}}catch(e){}}
       }
     }catch(e){}
     setSupaStatus('ok');
@@ -2347,6 +2370,47 @@ useEffect(()=>{
 if(user){const existing=JSON.parse(localStorage.getItem('eureka_session')||'{}');localStorage.setItem('eureka_session',JSON.stringify({id:user.id,login:user.login,nom:user.nom,prenom:user.prenom,role:user.role,agentId:user.agentId||"",mdp:user.mdp||"",_loginAt:existing._loginAt||Date.now(),_lastActivity:Date.now()}));}
 else localStorage.removeItem('eureka_session');
 },[user]);
+// ─── Sonnerie RDV — alarme 30min avant, toutes les 5min ─────────────────────
+useEffect(()=>{
+  if(!user) return;
+  if(!window.__eurekaSonnerie) window.__eurekaSonnerie=new Set();
+  const check=()=>{
+    setTickNow(t=>t+1);
+    const now=new Date();
+    const todayIso=now.toISOString().slice(0,10);
+    rappelsPreclos.forEach(r=>{
+      if(!r.date||!r.heure||r.date!==todayIso) return;
+      const [hh,mm]=(r.heure||"00:00").split(":").map(Number);
+      const rdvMs=new Date(now.getFullYear(),now.getMonth(),now.getDate(),hh,mm,0).getTime();
+      const diffMs=rdvMs-now.getTime();
+      if(diffMs>0&&diffMs<=30*60*1000){
+        const bucket=Math.floor(diffMs/(5*60*1000));
+        const key=`${r.id}_${bucket}`;
+        if(!window.__eurekaSonnerie.has(key)){
+          window.__eurekaSonnerie.add(key);
+          playBeep();
+        }
+      }
+    });
+  };
+  const id=setInterval(check,60000);
+  return()=>clearInterval(id);
+},[user,rappelsPreclos]);
+// ─── Lire le hash URL au chargement (support Ctrl+Click nouvel onglet) ───────
+const initHashRef=useRef(window.location.hash);
+useEffect(()=>{
+  const h=initHashRef.current;
+  if(!h||!user||!prospects.length) return;
+  const vueM=h.match(/#vue=([^&]+)/);
+  const dossM=h.match(/#dossier=(\d+)/);
+  if(dossM){
+    const found=prospects.find(p=>String(p.id)===dossM[1]);
+    if(found){setProsp(found);setVue("fiche");setFicheTab("societe");initHashRef.current="";}
+  } else if(vueM){
+    setVue(vueM[1]);
+    initHashRef.current="";
+  }
+},[user,prospects]);
 // ─── Répondre à une question (sauvegarde auto) ───────────────
 function repondre(qi, oi){
 if(quizValide) return;
@@ -2473,7 +2537,7 @@ Promise.allSettled(feedsActifs.map(f=>fetchOneFeed(f))).then(results=>{
   if(ptsUniq.length>0){
     const nRisque=ptsUniq.filter(p=>p.impact==='risque').length;
     const data={
-      date:tsStr,
+      date:tsStr,_ts:Date.now(),
       resume:'\u{1F7E2} '+ptsUniq.length+' actualit\u00e9'+(ptsUniq.length>1?'s':'')+' en direct — '+new Date().toLocaleString('fr-FR'),
       points:ptsUniq.slice(0,8),
       argument_du_jour:"Les prix de l'\u00e9nergie \u00e9voluent vite \u2014 les entreprises qui anticipent leur ren\u00e9gociation \u00e9conomisent en moyenne 15 \u00e0 20%. Est-ce que votre contrat arrive \u00e0 terme ?",
@@ -2482,7 +2546,8 @@ Promise.allSettled(feedsActifs.map(f=>fetchOneFeed(f))).then(results=>{
       isLive:true
     };
     setNewsData(data);
-    try{localStorage.setItem('eureka_news_cache',JSON.stringify(data));localStorage.setItem('eureka_news_ts',tsStr);setNewsLastFetch(tsStr);}catch(e){}
+    try{localStorage.setItem('eureka_news_cache',JSON.stringify(data));localStorage.setItem('eureka_news_ts',tsStr);localStorage.setItem('eureka_news_ts_ms',String(Date.now()));setNewsLastFetch(tsStr);}catch(e){}
+    if(window.db&&window.db.ready) window.db.upsert('config',[{key:'news_data',value:JSON.stringify(data)}]).catch(()=>{});
   } else {
     try{
       const cached=localStorage.getItem('eureka_news_cache');
@@ -2503,16 +2568,72 @@ Promise.allSettled(feedsActifs.map(f=>fetchOneFeed(f))).then(results=>{
 }).catch(()=>setNewsLoading(false));
 },[actuFeeds]);
 
+// ─── Actualités IA — Claude Haiku 4.5 via Edge Function Supabase ─────────────
+const fetchActualitesClaude = useCallback(async()=>{
+  if(!claudeKey) return false;
+  setNewsLoading(true);
+  const now=new Date();
+  const dateStr=now.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  const heureStr=now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  const tsStr=dateStr+" à "+heureStr;
+  try{
+    const proxyUrl=(window._supaUrl||'https://qjruqilnevfdbzsobrmu.supabase.co')+'/functions/v1/claude-proxy';
+    const resp=await fetch(proxyUrl,{
+      method:"POST",
+      headers:{
+        "Authorization":"Bearer "+(window._supaKey||''),
+        "x-anthropic-key":claudeKey,
+        "content-type":"application/json"
+      },
+      body:JSON.stringify({
+        model:"claude-haiku-4-5-20251001",
+        max_tokens:1200,
+        system:`Tu es l'assistant IA interne d'Eureka Energy Consulting, spécialisé dans la vente de contrats d'énergie (électricité et gaz naturel) aux professionnels en France.\nTon rôle : produire chaque heure un briefing opérationnel court, factuel et directement utilisable par les agents commerciaux pour prospecter efficacement aujourd'hui.\n\n=== RÈGLES MÉTIER ABSOLUES ===\n1. FENÊTRE DE NÉGOCIATION : La loi française permet à toute entreprise de renégocier son contrat d'énergie jusqu'à 24 mois AVANT l'échéance. Cible prioritaire : contrats se terminant dans les 24 prochains mois. Argument clé : "Vous pouvez agir maintenant, sans attendre l'échéance."\n2. TARIF RÉGLEMENTÉ (TRV) : Résiliation à tout moment avec 30 jours de préavis, sans pénalité. Argument clé : "Vous pouvez changer demain si vous le souhaitez."\n3. OFFRES DE MARCHÉ : Contrats prix fixe 1-3 ans. Résiliation anticipée = pénalités SAUF si fournisseur augmente le prix unilatéralement (résiliation sous 30j sans frais).\n4. ÉLIGIBILITÉ : Plus de 36 kVA en électricité ou plus de 300 MWh/an en gaz permet de mettre les fournisseurs en concurrence.\n5. DONNÉES POUR UN AUDIT : PDL (élec) ou PCE (gaz), consommation annuelle, date échéance contrat actuel, fournisseur actuel.\n\n=== RÈGLES DE CONTENU ===\nN'affirme que ce que tu sais être vrai. Si données prix absentes, écris "données en cours d'actualisation". N'invente JAMAIS de prix ou chiffres. Ne promets jamais d'économies précises sans audit. Longueur max : 250 mots au total. N'utilise jamais de superlatifs vides sans faits. Ne dis jamais que les prix "vont forcément baisser".\n\n=== CONTEXTE EUREKA ===\nEureka Energy Consulting est un courtier énergie B2B — pas fournisseur. Nous comparons et négocions pour le compte de PME, ETI et collectivités. Les agents prospectent par téléphone. Le briefing sert d'accroche d'appel et de contexte pour répondre aux objections terrain.`,
+        messages:[{role:"user",content:`Date : ${dateStr} — Heure : ${heureStr}\n\nGénère le briefing marché énergie du moment pour les agents Eureka Energy.\nBase-toi sur les données de marché les plus récentes disponibles dans ta connaissance.\nSi tu n'as pas de données temps réel sur un prix précis, indique "données en cours d'actualisation" — ne jamais inventer de chiffre.\n\nRéponds UNIQUEMENT avec ce JSON valide (sans markdown ni texte autour) :\n{"points":[{"titre":"🔴 Actualité brûlante","detail":"[fait majeur du marché énergie du jour]","impact":"risque","source":"Analyse IA"},{"titre":"⚡ Électricité","detail":"[prix EPEX SPOT, nucléaire EDF, renouvelables — tendance et impact prospect]","impact":"risque|opportunité","source":"EPEX"},{"titre":"🔥 Gaz naturel","detail":"[prix TTF/PEG, stockages européens, LNG, géopolitique — tendance et impact prospect]","impact":"risque|opportunité","source":"TTF/PEG"},{"titre":"🎯 Cible du jour","detail":"[profil d'entreprise à prioriser aujourd'hui et pourquoi]","impact":"opportunité","source":"Analyse IA"}],"argument_du_jour":"[1 phrase percutante fondée sur une règle légale réelle ou l'actu du jour, pour convaincre un dirigeant PME de revoir son contrat énergie]","conseil":"[1 action concrète et immédiate pour les téléprospecteurs aujourd'hui]","tendance":"hausse|baisse|stable"}`}]
+      })
+    });
+    if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`Erreur ${resp.status}`);}
+    const d=await resp.json();
+    const raw=(d.content?.[0]?.text||"").trim();
+    const jsonMatch=raw.match(/\{[\s\S]*\}/);
+    const parsed=JSON.parse(jsonMatch?jsonMatch[0]:raw);
+    const data={
+      date:tsStr,_ts:Date.now(),
+      resume:`🤖 Briefing IA Claude Haiku — ${tsStr}`,
+      points:(parsed.points||[]).slice(0,5).map(p=>({...p,source:p.source||"Analyse IA"})),
+      argument_du_jour:parsed.argument_du_jour||"",
+      conseil:parsed.conseil||"",
+      tendance:parsed.tendance||"stable",
+      isLive:true,isClaude:true
+    };
+    setNewsData(data);
+    try{localStorage.setItem('eureka_news_cache',JSON.stringify(data));localStorage.setItem('eureka_news_ts',tsStr);localStorage.setItem('eureka_news_ts_ms',String(data._ts));setNewsLastFetch(tsStr);}catch(e){}
+    if(window.db&&window.db.ready) window.db.upsert('config',[{key:'news_data',value:JSON.stringify(data)}]).catch(()=>{});
+    setNewsLoading(false);
+    return true;
+  }catch(err){
+    setNewsLoading(false);
+    return false;
+  }
+},[claudeKey]);
+
 useEffect(()=>{
 if(!user||vue!=="dashboard") return;
-// Auto-fetch immédiat si données > 30 min ou absentes
-const lastTs=localStorage.getItem('eureka_news_ts');
-const tooOld=!lastTs||(Date.now()-new Date(lastTs).getTime()>30*60*1000);
-if(!newsData||tooOld) fetchNews();
-// Timer auto-refresh toutes les 30 min
-newsAutoRefRef.current=setInterval(()=>{if(newsOuvert) fetchNews();},30*60*1000);
+function isHeuresOuvrables(){const n=new Date();const j=n.getDay();const h=n.getHours();return j>=1&&j<=5&&h>=8&&h<17;}
+const fetchActu=()=>{if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});}else fetchNews();};
+// Auto-fetch immédiat si données > 60 min ou absentes
+const tsMs=parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
+const tooOld=!tsMs||(Date.now()-tsMs>60*60*1000);
+if(!newsData||tooOld) fetchActu();
+// Vérification chaque minute — fetch si lun-ven 8h-17h et 60 min écoulées
+newsAutoRefRef.current=setInterval(()=>{
+  if(!isHeuresOuvrables()) return;
+  const tsMs2=parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
+  if(tsMs2&&(Date.now()-tsMs2<60*60*1000)) return;
+  fetchActu();
+},60000);
 return()=>clearInterval(newsAutoRefRef.current);
-},[user,vue,fetchNews]);
+},[user,vue,fetchNews,fetchActualitesClaude,claudeKey]);
 // ─── FILTRAGE DES DONNÉES SELON RÔLE ───────────────
 const vueProspects = useMemo(()=>user?.role==="agent"?prospects.filter(p=>p.agentId===user.agentId):prospects,[prospects,user]);
 // ─── AGENTS COMPLETS : fusionne agents + utilisateurs agents ───────
@@ -2760,30 +2881,37 @@ if(modeForm&&v!==vue){
 }
 try{sessionStorage.setItem("eureka_vue",v);}catch(e){}
 setVue(v);setProsp(null);setAgentVu(null);setModeForm(null);setEditMode(false);setFicheTab("societe");setNavBack(null);
+setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 if(v==="prospects"){setFiltreMoisSig("Tous");}
 if(v!=="formation"){setAgentFormActif(null);}
 }
+// ─── Nouvel onglet : Ctrl+Click sur nav ou dossier ───────────────────────────
+function makeTabUrl(v,dossId){const base=window.location.href.split('#')[0];return dossId?`${base}#dossier=${dossId}`:`${base}#vue=${v}`;}
 // Navigation avec contexte de retour
 function goNavAvecRetour(destination,retourVue,retourLabel){
-setVue(destination);
-setNavBack({vue:retourVue,label:retourLabel});
+setVue(destination);setNavBack({vue:retourVue,label:retourLabel});
+setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 }
 function goRetour(){
 if(navBack){setVue(navBack.vue);setNavBack(null);setAgentVu(null);}
 else goNav("dashboard");
+setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 }
 function goFiltre(s,u){
 setFiltreS("Tous");setFiltreT("Tous");setFiltreU("Tous");setFiltreA("Tous");setFiltreC("Tous");setFiltreMoisSig("Tous");setRech("");
+setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 if(s)setFiltreS(s); if(u)setFiltreU(u);
 setVue("prospects");setProsp(null);setModeForm(null);
 }
 function goFiltreCa(d){
 setFiltreS("Signé");setFiltreT("Tous");setFiltreU("Tous");setFiltreA("Tous");setFiltreC("Tous");setRech("");
+setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 setFiltreMoisSig(d);
 setVue("prospects");setProsp(null);setModeForm(null);
 }
 function goSansAcd(){
 setFiltreS("Tous");setFiltreT("Tous");setFiltreU("sansAcd");setFiltreA("Tous");setFiltreC("Tous");setFiltreMoisSig("Tous");setRech("");
+setCalibDebut("");setCalibFin("");setSortDoss({col:"datePro",dir:-1});setShowCalibPicker(null);
 setVue("prospects");setProsp(null);setModeForm(null);
 }
 // ─── CRUD ────────────────────────────────────────
@@ -3064,7 +3192,7 @@ navItems.push({id:"classement", label:"Classement"});
 navItems.push({id:"formation", label:"Formation"});
 if(user.role!=="agent") navItems.push({id:"valeurs", label:"Valeurs"});
 if(user.role!=="agent") navItems.push({id:"journal-activite", label:"Journal d'activité"});
-if(user.role==="admin"||user.role==="superadmin") navItems.push({id:"utilisateurs", label:"Utilisateurs"});
+if(user.role==="admin"||user.role==="superadmin") navItems.push({id:"utilisateurs", label:`Utilisateurs (${users.length})`});
 if(user.role==="admin"||user.role==="superadmin") navItems.push({id:"parametres",label:"Paramètres"});
 navItems.push({id:"preclos", label:"Rendez-vous"});
 // ─── Icônes navigation ────────────────────────────────
@@ -3136,7 +3264,7 @@ return(
       {items.map(n=>{
         const isActive=vue===n.id;
         return(
-        <button key={n.id} onClick={()=>goNav(n.id)} title={isTablet?n.label:undefined} style={{
+        <a key={n.id} href={makeTabUrl(n.id)} onClick={e=>{if(e.ctrlKey||e.metaKey||e.button===1) return; e.preventDefault();goNav(n.id);}} title={isTablet?n.label:undefined} style={{
           width:"100%",padding:isTablet?"10px 0":"9px 12px",marginBottom:2,
           display:"flex",alignItems:"center",justifyContent:isTablet?"center":"flex-start",gap:isTablet?0:10,
           background:isActive?`${BR}cc`:"transparent",
@@ -3146,7 +3274,7 @@ return(
           borderRadius:"0 8px 8px 0",
           cursor:"pointer",fontSize:13.5,fontWeight:isActive?700:500,
           textAlign:isTablet?"center":"left",transition:".18s",fontFamily:"'Poppins',sans-serif",
-          position:"relative"
+          position:"relative",textDecoration:"none"
         }}
         onMouseEnter={e=>{if(!isActive){e.currentTarget.style.background=`${JVc}10`;e.currentTarget.style.color=T.text;}}}
         onMouseLeave={e=>{if(!isActive){e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.sub;}}}>
@@ -3154,7 +3282,7 @@ return(
           {!isTablet&&<span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n.label}</span>}
           {n.id==="dashboard"&&stats.rappels>0&&<span style={{background:"#dc2626",color:"white",borderRadius:10,fontSize:11,padding:"1px 5px",fontWeight:800,position:isTablet?"absolute":"static",top:isTablet?4:undefined,right:isTablet?4:undefined,marginLeft:isTablet?0:"auto"}}>{stats.rappels}</span>}
           {n.id==="preclos"&&nbPreclosAujourdHui>0&&<span style={{background:"#dc2626",color:"white",borderRadius:10,fontSize:11,padding:"1px 5px",fontWeight:800,position:isTablet?"absolute":"static",top:isTablet?4:undefined,right:isTablet?4:undefined,marginLeft:isTablet?0:"auto",animation:"blink-border 1s ease-in-out infinite"}}>{nbPreclosAujourdHui}</span>}
-        </button>
+        </a>
         );
       })}
     </div>
@@ -3387,7 +3515,7 @@ style={{flex:1,background:"transparent",border:"none",color:vue===n.id?JV:JVc+"b
   );
 })()}
 {/* ── Contenu principal (fade-in) ── */}
-<div style={{flex:1,marginLeft:isMobile?0:isTablet?60:230,padding:isMobile?"10px 10px 60px":isTablet?"14px 16px":"22px 26px",minHeight:"100vh",width:isMobile?"100%":isTablet?"calc(100% - 60px)":"calc(100% - 230px)",boxSizing:"border-box"}} className="fade-in">
+<div style={{flex:1,marginLeft:isMobile?0:isTablet?60:230,padding:isMobile?"10px 10px 60px":isTablet?"1.5cm 16px 16px":"1.5cm 26px 26px",minHeight:"100vh",width:isMobile?"100%":isTablet?"calc(100% - 60px)":"calc(100% - 230px)",boxSizing:"border-box"}} className="fade-in">
 {/* ── Bandeau connexion perdue ── */}
 {supaStatus==="error"&&(
 <div style={{position:"sticky",top:0,zIndex:400,background:"#2a0a0a",border:"1px solid #dc2626",borderRadius:8,padding:"8px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10,fontSize:13,color:"#f87171",fontWeight:600}}>
@@ -3406,7 +3534,7 @@ DASHBOARD
 {vue==="form"&&!modeForm&&(()=>{setTimeout(()=>setVue("prospects"),0);return null;})()}
 {vue==="dashboard"&&(()=>{
 return(
-<div>
+<div style={{paddingTop:isMobile?0:10}}>
 <div style={{marginBottom:isMobile?10:14,display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
 <div>
 <div style={{fontSize:14,color:T.muted,letterSpacing:".2em",marginBottom:6}}>TABLEAU DE BORD</div>
@@ -3478,22 +3606,25 @@ setShowRapportSemaine(true);
 <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
 <div style={{width:8,height:8,borderRadius:"50%",background:newsData?.isLive?"#4ade80":"#fbbf24",boxShadow:`0 0 8px ${newsData?.isLive?"#4ade80":"#fbbf24"}`,flexShrink:0}} className="pulse"/>
 <div style={{minWidth:0}}>
-  <span style={{fontWeight:700,fontSize:isMobile?13:14,color:T.text}}>🔥 Actualités Brûlantes Marché Énergie</span>
+  <span style={{fontWeight:700,fontSize:isMobile?13:14,color:T.text}}>
+    {newsData?.isClaude?"🤖":"🔥"} Actualités Marché Énergie
+    {claudeKey&&<span style={{fontSize:11,marginLeft:8,color:"#60a5fa",fontWeight:700,background:"#0a1a3066",border:"1px solid #60a5fa44",borderRadius:12,padding:"1px 8px"}}>IA Claude</span>}
+  </span>
   {newsLastFetch&&<div style={{fontSize:11,color:newsData?.isLive?GRc:"#fbbf24",marginTop:1}}>
-    {newsData?.isLive?"🟢 En direct":"🟡 Cache"} — dernière MAJ : {newsLastFetch}
+    {newsData?.isLive?"🟢 En direct":"🟡 Cache"} — MAJ : {newsLastFetch}
   </div>}
 </div>
 </div>
 <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-{newsOuvert&&<button className="btn-primary" style={{fontSize:13,padding:"6px 12px"}} onClick={e=>{e.stopPropagation();fetchNews();}}>⟳ Actualiser</button>}
+{newsOuvert&&<button className="btn-primary" style={{fontSize:13,padding:"6px 12px"}} onClick={e=>{e.stopPropagation();if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});}else fetchNews();}}>⟳ {claudeKey?"IA":"RSS"}</button>}
 <span style={{fontSize:20,color:T.sub,transition:".3s",transform:newsOuvert?"rotate(0)":"rotate(-90deg)",display:"inline-block"}}>▾</span>
 </div>
 </div>
 {newsOuvert&&<div style={{padding:isMobile?"8px 12px":"12px 16px"}}>
 {!newsData&&!newsLoading&&<div style={{textAlign:"center",padding:20,color:T.sub,fontSize:15}}>Chargement automatique en cours...</div>}
 {newsLoading&&<div style={{textAlign:"center",padding:20}}>
-<div style={{fontSize:15,color:JVc,fontWeight:600}}>↻ Récupération des actualités en temps réel...</div>
-<div style={{fontSize:14,color:T.sub,marginTop:4}}>Connexion aux sources RSS — peut prendre 5-10 secondes</div>
+<div style={{fontSize:15,color:JVc,fontWeight:600}}>{claudeKey?"🤖 Génération IA en cours…":"↻ Récupération des actualités en temps réel..."}</div>
+<div style={{fontSize:14,color:T.sub,marginTop:4}}>{claudeKey?"Claude Haiku analyse le marché énergie — 2 à 3 secondes":"Connexion aux sources RSS — peut prendre 5-10 secondes"}</div>
 </div>}
 {newsData&&!newsLoading&&<div className="fade-in">
 <div style={{fontSize:14,color:T.text,marginBottom:14,padding:"8px 14px",background:T.bg3,borderRadius:8,borderLeft:`3px solid ${newsData.isLive?"#4ade80":"#fbbf24"}`}}>{newsData.resume}</div>
@@ -3542,12 +3673,20 @@ return(
 </div>}
 {/* Alerte rappels */}
 {rappelsUrgents.length>0&&(
-<div style={{background:"#1a0a0a",border:"1px solid #dc2626",borderRadius:10,padding:"10px 14px",marginBottom:20,display:"flex",alignItems:"center",gap:14}}>
+<div onClick={()=>{
+  const rapDate=rappelsUrgents[0]?.dateRappelClient||rappelsUrgents[0]?.dateRappelPerte||new Date().toISOString().slice(0,10);
+  const mois=rapDate.slice(0,7);
+  const jour=parseInt(rapDate.slice(8,10));
+  setCalMois(mois);
+  setCalDetail({jour,evts:calEvents[rapDate]||[],creerMode:false,dateStr:rapDate});
+  goNav("calendrier");
+}} style={{background:"#1a0a0a",border:"1px solid #dc2626",borderRadius:10,padding:"10px 14px",marginBottom:20,display:"flex",alignItems:"center",gap:14,cursor:"pointer"}} title="Voir dans le calendrier">
 <div style={{width:10,height:10,background:"#f87171",borderRadius:"50%"}} className="pulse"/>
 <div style={{flex:1}}>
 <div style={{fontSize:16,fontWeight:700,color:"#f87171",marginBottom:2}}>{rappelsUrgents.length} rappel(s) urgent(s)</div>
 <div style={{fontSize:14,color:"#ffb0b0"}}>{rappelsUrgents.map(p=>p.societe).join(" · ")}</div>
 </div>
+<div style={{fontSize:13,color:"#f87171",fontWeight:700,flexShrink:0}}>Voir →</div>
 </div>
 )}
 {/* Stats cards — grille adaptive */}
@@ -3560,7 +3699,7 @@ return(
 ["Clients", stats.gagnes, GRc, ()=>goFiltre("Signé")],
 ["Perdus", stats.perdus, "#f87171", ()=>goFiltre("Perdu")],
 ["Sans ACD", stats.sansAcd, "#fb923c", goSansAcd],
-["CA Fourn.", fmt(caFournMoisSel),"#fbbf24", null],
+["CA Fourn.", fmt(caFournMoisSel),"#fbbf24", ()=>{const [y,m]=moisCa.split("-");setCalibDebut(`${y}-${m}-01`);setCalibFin(new Date(parseInt(y),parseInt(m),0).toISOString().split("T")[0]);setVue("valeurs");}],
 ].map(([lbl,val,c,fn])=>(
 <div key={lbl} className={fn?"stat-box":"card"} onClick={fn||undefined} style={!fn?{cursor:"default"}:{padding:isCompact?"14px":undefined}}>
 <div style={{fontSize:isCompact?10:12,color:T.muted,fontWeight:600,letterSpacing:".04em",marginBottom:isCompact?6:10}}>{lbl}</div>
@@ -3922,8 +4061,9 @@ const carTotal = carElec + carGaz;
 const energieText = (carElec>0?`Élec(${p.segment_elec||"?"})`:"") + (carElec>0&&carGaz>0?" & ":"") + (carGaz>0?"Gaz":"") || "—";
 
 return(
-<div key={p.id} className="row-hover" onClick={()=>{setProsp(p);setVue("fiche");setFicheTab("societe");log("Ouverture fiche",p.societe);}}
-style={{display:isCompact?"flex":"grid",flexDirection:isCompact?"column":undefined,gridTemplateColumns:isCompact?undefined:"0.7fr 1.5fr 0.9fr 0.9fr 0.65fr 1fr 0.8fr 0.8fr 48px 36px",padding:isCompact?"12px 14px":"12px 18px",borderBottom:`1px solid ${T.bg3}`,alignItems:isCompact?"flex-start":"center",gap:isCompact?5:0}}>
+<a key={p.id} href={makeTabUrl("fiche",p.id)} className="row-hover" onClick={e=>{if(e.ctrlKey||e.metaKey||e.button===1) return; e.preventDefault();setProsp(p);setVue("fiche");setFicheTab("societe");log("Ouverture fiche",p.societe);}}
+title="Clic droit → Ouvrir dans un nouvel onglet"
+style={{display:isCompact?"flex":"grid",flexDirection:isCompact?"column":undefined,gridTemplateColumns:isCompact?undefined:"0.7fr 1.5fr 0.9fr 0.9fr 0.65fr 1fr 0.8fr 0.8fr 48px 36px",padding:isCompact?"12px 14px":"12px 18px",borderBottom:`1px solid ${T.bg3}`,alignItems:isCompact?"flex-start":"center",gap:isCompact?5:0,textDecoration:"none",color:"inherit"}}>
 {!isMobile&&<div style={{fontSize:13,color:T.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:8}}>{fmtDate(p.datePro)}</div>}
 <div style={{overflow:"hidden",paddingRight:6}}>
 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -3961,7 +4101,7 @@ style={{display:isCompact?"flex":"grid",flexDirection:isCompact?"column":undefin
 <div onClick={e=>{e.stopPropagation();setForm({...p});setEditMode(true);setDoublonMsg(null);setModeForm("prospect");setVue("form");setFicheTab("societe");}} style={{color:T.muted,padding:"4px 6px",fontSize:16,cursor:"pointer",textAlign:"center"}}>✎</div>
 </>
 )}
-</div>
+</a>
 );
 })}
 </div>
@@ -6112,9 +6252,10 @@ const valEureka=Math.round(margeFourn*pctEurekaJournal/100);
 const valDossier=margeFourn; // VL. DOSSIER = marge fournisseur totale (source unifiée)
 const ag2=agents.find(a=>a.id===p.agentId);
 return(
-<div key={p.id} className="row-hover"
-onClick={()=>{setProsp(p);setVue("fiche");setFicheTab("societe");log("Ouverture fiche depuis journal",p.societe);}}
-style={{display:isCompact?"block":"grid",gridTemplateColumns:isCompact?undefined:"108px 1fr 110px 130px 90px 115px 130px",padding:isCompact?"13px 14px":"11px 16px",borderBottom:`1px solid ${T.bg3}`,alignItems:"center",fontSize:15}}>
+<a key={p.id} href={makeTabUrl("fiche",p.id)} className="row-hover"
+onClick={e=>{if(e.ctrlKey||e.metaKey||e.button===1) return; e.preventDefault();setProsp(p);setVue("fiche");setFicheTab("societe");log("Ouverture fiche depuis journal",p.societe);}}
+title="Clic droit → Ouvrir dans un nouvel onglet"
+style={{display:isCompact?"block":"grid",gridTemplateColumns:isCompact?undefined:"108px 1fr 110px 130px 90px 115px 130px",padding:isCompact?"13px 14px":"11px 16px",borderBottom:`1px solid ${T.bg3}`,alignItems:"center",fontSize:15,textDecoration:"none",color:"inherit"}}>
 {isCompact?<div>
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
 <span style={{fontWeight:700,fontSize:16,color:JVc}}>{p.societe}</span>
@@ -6141,7 +6282,7 @@ onMouseLeave={e=>e.currentTarget.style.textShadow="none"}>{p.societe}</span>
 {valDossier>0?fmt(valDossier):"—"}
 </div>
 </>}
-</div>
+</a>
 );
 })}
 {/* ── Ligne totaux calibrés ── */}
@@ -6199,6 +6340,9 @@ const journalRecent=journal.filter(e=>{
   if(parts.length!==3) return true;
   const d=new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
   return(Date.now()-d.getTime())<TRENTE_JOURS_MS;
+}).sort((a,b)=>{
+  const toSort=t=>{if(!t)return"";const[d,h=""]=t.split(" ");const p=d.split("/");return p.length===3?`${p[2]}${p[1]}${p[0]}${h.replace(/:/g,"")}`:t;};
+  return toSort(b.ts).localeCompare(toSort(a.ts));
 });
 const jFiltre=journalRecent.filter(e=>{
   if(!calibDebut&&!calibFin) return true;
@@ -6226,15 +6370,15 @@ return(
 <div style={{background:T.card,border:`1px solid ${T.bord}`,borderRadius:10,overflow:"hidden"}}>
 {/* En-tête : IP visible pour admin/superadmin uniquement */}
 {!isCompact&&<div style={{display:"grid",gridTemplateColumns:(user.role==="admin"||user.role==="superadmin")?"160px 140px 1fr 120px":"160px 140px 1fr",padding:"12px 22px",borderBottom:`1px solid ${T.bord}`,fontSize:13,color:T.muted,fontWeight:700,letterSpacing:".1em",background:T.bg3}}>
-  <div>DATE ET HEURE</div><div>UTILISATEUR</div><div>ACTION</div>
+  <div>DATE ET HEURE</div><div style={{paddingLeft:"5cm"}}>UTILISATEUR</div><div style={{paddingLeft:"10cm"}}>ACTION</div>
   {(user.role==="admin"||user.role==="superadmin")&&<div style={{color:"#fbbf24"}}>IP</div>}
 </div>}
 {jFiltre.length===0&&<div style={{padding:48,textAlign:"center",color:T.muted,fontSize:16}}>Aucune activité dans cette période.</div>}
 {jFiltre.map((e,i,arr)=>(
   <div key={i} style={{display:isCompact?"flex":"grid",flexDirection:isCompact?"column":undefined,gridTemplateColumns:isCompact?undefined:(user.role==="admin"||user.role==="superadmin")?"160px 140px 1fr 120px":"160px 140px 1fr",padding:isCompact?"10px 14px":"10px 22px",borderBottom:i<arr.length-1?`1px solid ${T.bg3}`:"none",alignItems:isCompact?"flex-start":"center",gap:isCompact?3:0,background:i%2===0?"transparent":`${T.bg3}55`}}>
     <div style={{fontSize:12,color:T.sub,fontFamily:"monospace"}}>{e.ts}</div>
-    <div style={{fontSize:isCompact?14:14,fontWeight:600,color:e.user==="Système"?T.muted:(themeMode==="light"?"#05060f":JV)}}>{e.user}</div>
-    <div style={{fontSize:14,color:T.text}}>{e.action}{e.detail?` — ${e.detail}`:""}</div>
+    <div style={{fontSize:isCompact?14:14,fontWeight:600,color:e.user==="Système"?T.muted:(themeMode==="light"?"#05060f":JV),paddingLeft:isCompact?0:"5cm"}}>{e.user}</div>
+    <div style={{fontSize:14,color:T.text,paddingLeft:isCompact?0:"10cm"}}>{e.action}{e.detail?` — ${e.detail}`:""}</div>
     {(user.role==="admin"||user.role==="superadmin")&&<div style={{fontSize:12,color:e.action==="Connexion"?"#fbbf24":T.muted,fontFamily:"monospace",fontWeight:e.action==="Connexion"?700:400}}>{e.ip||"—"}</div>}
   </div>
 ))}
@@ -6249,9 +6393,11 @@ PAGE PRÉCLOS
 {vue==="preclos"&&(()=>{
 const todayStr=new Date().toISOString().slice(0,10);
 const demainStr=new Date(Date.now()+86400000).toISOString().slice(0,10);
-const rappelsDuJour=rappelsPreclos.filter(r=>r.date===todayStr).sort((a,b)=>a.heure.localeCompare(b.heure));
+const nowHeure=new Date().toTimeString().slice(0,5);
+const rappelsDuJour=rappelsPreclos.filter(r=>r.date===todayStr&&(r.heure||"00:00")>=nowHeure).sort((a,b)=>a.heure.localeCompare(b.heure));
 const rappelsBientot=rappelsPreclos.filter(r=>r.date===demainStr).sort((a,b)=>a.heure.localeCompare(b.heure));
-const rappelsRetard=rappelsPreclos.filter(r=>r.date<todayStr).sort((a,b)=>b.date.localeCompare(a.date));
+const rappelsDuJourRetard=rappelsPreclos.filter(r=>r.date===todayStr&&(r.heure||"00:00")<nowHeure).sort((a,b)=>b.heure.localeCompare(a.heure));
+const rappelsRetard=[...rappelsDuJourRetard,...rappelsPreclos.filter(r=>r.date<todayStr)].sort((a,b)=>b.date!==a.date?b.date.localeCompare(a.date):b.heure.localeCompare(a.heure));
 const rappelsAvenir=rappelsPreclos.filter(r=>r.date>demainStr).sort((a,b)=>a.date.localeCompare(b.date));
 const TYPE_COLORS={préclos:{bg:"#0a1221",border:"#2563eb",text:"#60a5fa"},présentation:{bg:"#0a2a0a",border:"#16a34a",text:GRc}};
 const fmtDt=(d,h)=>{if(!d)return"";const p=d.split("-");const date=`${p[2]}/${p[1]}/${p[0]}`;return h?`${h} ${date}`:date;};
@@ -6278,8 +6424,12 @@ const delRappel=async(id)=>{
   if(window.db&&window.db.ready) await window.db.del('rappels','id',id).catch(e=>setSupaErrMsg("Erreur suppression RDV: "+e.message));
 };
 const editRappel=(r)=>{setFormPreclos({date:r.date,heure:r.heure||"08:00",type:r.type||"préclos",numero:r.numero||"",mail:r.mail||"",note:r.note||"",entreprise:r.entreprise||""});setEditPreclosId(r.id);setShowFormPreclos(true);};
-const RappelCard=({r})=>{const tc=TYPE_COLORS[r.type]||TYPE_COLORS["préclos"];return(
-<div style={{background:tc.bg,border:`1px solid ${tc.border}`,borderLeft:`4px solid ${tc.border}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+const RappelCard=({r})=>{
+  const tc=TYPE_COLORS[r.type]||TYPE_COLORS["préclos"];
+  const isRetard=(r.date<todayStr)||(r.date===todayStr&&(r.heure||"00:00")<nowHeure);
+  const bord=isRetard?"#d97706":tc.border;
+  return(
+<div style={{background:tc.bg,border:`1px solid ${bord}`,borderLeft:`4px solid ${bord}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
   <div style={{flex:1}}>
     {r.entreprise&&<div style={{fontSize:17,fontWeight:800,color:"#e8eaf6",marginBottom:4,letterSpacing:".01em"}}>{r.entreprise}</div>}
     {r.note&&<div style={{fontSize:14,color:"#e8eaf6",marginBottom:8,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.note}</div>}
@@ -6289,6 +6439,7 @@ const RappelCard=({r})=>{const tc=TYPE_COLORS[r.type]||TYPE_COLORS["préclos"];r
     </div>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <span style={{background:tc.border+"33",color:tc.text,border:`1px solid ${tc.border}`,borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700,textTransform:"uppercase"}}>{r.type}</span>
+      {isRetard&&<span style={{background:"#7c2d1244",color:"#fbbf24",border:"1px solid #d97706",borderRadius:20,fontSize:11,padding:"2px 10px",fontWeight:800,textTransform:"uppercase",letterSpacing:".05em"}}>⚠ EN RETARD</span>}
       {r.numero&&<span style={{fontSize:13,color:"#c8d0f0"}}>📞 {r.numero}</span>}
       {r.mail&&<span style={{fontSize:13,color:"#c8d0f0"}}>✉ {r.mail}</span>}
     </div>
@@ -6435,6 +6586,7 @@ const ONGLETS=[
 {id:"emails", label:"Emails automatiques"},
 {id:"formations", label:"Formations & Quiz"},
 {id:"actualites", label:"📡 Actualités & Sources"},
+{id:"claude", label:"🤖 Claude AI"},
 {id:"supabase", label:"☁️ Supabase"},
 ];
 return(
@@ -7249,6 +7401,98 @@ return(
     }}>💾 Sauvegarder &amp; Appliquer</button>
   </div>
 </div>
+</div>
+);
+})()}
+
+{/* ── Onglet Claude AI ── */}
+{ongletParam==="claude"&&(()=>{
+const claudeConfigured=!!(claudeKey&&claudeKey.startsWith('sk-ant-'));
+const testResult=claudeTestResult;
+const setTestResult=setClaudeTestResult;
+const testLoading=claudeTestLoading;
+const setTestLoading=setClaudeTestLoading;
+const testerClaude=async()=>{
+  const key=claudeKeyInput.trim()||claudeKey;
+  if(!key){setTestResult({ok:false,msg:"Entrez d'abord une clé API."});return;}
+  setTestLoading(true);setTestResult(null);
+  try{
+    const proxyUrl=(window._supaUrl||'https://qjruqilnevfdbzsobrmu.supabase.co')+'/functions/v1/claude-proxy';
+    const r=await fetch(proxyUrl,{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+(window._supaKey||''),"x-anthropic-key":key,"content-type":"application/json"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:10,messages:[{role:"user",content:"OK"}]})
+    });
+    if(r.ok){setTestResult({ok:true,msg:"Connexion réussie via Edge Function — Claude Haiku 4.5 opérationnel ✓"});}
+    else{const e=await r.json().catch(()=>({}));setTestResult({ok:false,msg:e.error?.message||`Erreur HTTP ${r.status}`});}
+  }catch(e){setTestResult({ok:false,msg:"Erreur réseau : "+e.message});}
+  setTestLoading(false);
+};
+return(
+<div>
+  <div className="card" style={{marginBottom:20,border:`1px solid ${claudeConfigured?"#22c55e44":"#f59e0b44"}`}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+      <div style={{width:10,height:10,borderRadius:"50%",background:claudeConfigured?"#22c55e":"#fbbf24",boxShadow:`0 0 6px ${claudeConfigured?"#22c55e":"#fbbf24"}`,flexShrink:0}}/>
+      <span style={{fontSize:17,fontWeight:700}}>Clé API Anthropic</span>
+      <span style={{fontSize:13,color:claudeConfigured?GRc:"#fbbf24",fontWeight:700,background:claudeConfigured?"#05221555":"#1c150055",border:`1px solid ${claudeConfigured?"#22c55e44":"#f59e0b44"}`,borderRadius:20,padding:"2px 12px"}}>{claudeConfigured?"✓ Configurée":"Non configurée"}</span>
+    </div>
+    <div style={{fontSize:14,color:T.sub,marginBottom:14,lineHeight:1.7}}>
+      Connectez votre clé API Anthropic pour activer le <strong style={{color:T.text}}>briefing IA</strong> du widget Actualités.{" "}
+      Modèle : <code style={{background:T.bg3,padding:"1px 6px",borderRadius:4,fontSize:13}}>claude-haiku-4-5-20251001</code> — coût estimé <strong style={{color:"#a78bfa"}}>~$0,55/mois</strong>.
+    </div>
+    <div style={{marginBottom:14}}>
+      <div style={{fontSize:12,color:T.muted,fontWeight:700,marginBottom:6,letterSpacing:".1em"}}>CLÉ API (sk-ant-api03-...)</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <input className="field" type="password" style={{flex:1,minWidth:260,fontFamily:"monospace",fontSize:13}}
+          placeholder="sk-ant-api03-..."
+          value={claudeKeyInput}
+          onChange={e=>setClaudeKeyInput(e.target.value)}/>
+        <button className="btn-primary" style={{fontSize:13,padding:"7px 16px",whiteSpace:"nowrap"}} onClick={()=>{
+          const k=claudeKeyInput.trim();
+          if(!k){alert("Collez votre clé API Anthropic.");return;}
+          if(!k.startsWith("sk-ant-")){alert("Format invalide — la clé doit commencer par sk-ant-");return;}
+          setClaudeKey(k);
+          try{localStorage.setItem('eureka_claude_key',k);}catch(e){}
+          if(window.db&&window.db.ready) window.db.upsert('config',[{key:'claude_api_key',value:k}]).catch(()=>{});
+          setTestResult({ok:true,msg:"Clé enregistrée et sauvegardée sur Supabase — permanente sur tous les postes."});
+          log("Clé API Claude configurée");
+        }}>💾 Enregistrer</button>
+        <button className="btn-ghost" style={{fontSize:13,padding:"7px 14px",whiteSpace:"nowrap",opacity:testLoading?0.6:1}} onClick={testerClaude} disabled={testLoading}>
+          {testLoading?"⏳ Test en cours…":"⚡ Tester la connexion"}
+        </button>
+      </div>
+    </div>
+    {claudeConfigured&&!testResult&&<div style={{padding:"8px 14px",borderRadius:8,marginBottom:10,background:"#05221555",border:"1px solid #22c55e33",fontSize:13,color:GRc,display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontSize:15}}>🔒</span>
+      <span>Clé sauvegardée dans ce navigateur — elle reste active jusqu'à ce que vous la supprimiez manuellement.</span>
+    </div>}
+    {testResult&&<div style={{padding:"10px 14px",borderRadius:8,marginBottom:10,background:testResult.ok?"#05221555":"#2a080855",border:`1px solid ${testResult.ok?"#22c55e55":"#f8717155"}`,fontSize:14,color:testResult.ok?GRc:"#f87171",fontWeight:600}}>{testResult.msg}</div>}
+    {claudeConfigured&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+      <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={()=>{fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});goNav("dashboard");}}>▶ Actualiser le widget maintenant</button>
+      {user.role==="superadmin"&&<button className="btn-ghost" style={{fontSize:13,padding:"7px 14px",color:"#f87171",borderColor:"#f8717144"}} onClick={async()=>{
+        if(!await showConfirm("Supprimer la clé API Anthropic ?\nCette action désactivera le briefing IA pour toute l'équipe.")) return;
+        setClaudeKey("");setClaudeKeyInput("");
+        try{localStorage.removeItem('eureka_claude_key');}catch(e){}
+        if(window.db&&window.db.ready) window.db.del('config','key','claude_api_key').catch(()=>{});
+        log("Clé API Claude supprimée");
+      }}>✕ Supprimer la clé</button>}
+    </div>}
+  </div>
+  <div className="card" style={{border:`1px solid ${BR}44`}}>
+    <div style={{fontSize:15,fontWeight:700,color:JVc,marginBottom:10}}>Planification automatique</div>
+    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10,marginBottom:14}}>
+      {[["Jours","Lun → Ven","#60a5fa"],["Plage","8h00 — 17h00","#22c55e"],["Fréquence","1× / heure","#fbbf24"],["Coût/mois","~$0,55","#a78bfa"]].map(([l,v,c])=>(
+        <div key={l} style={{background:T.bg3,borderRadius:8,padding:"10px 14px",border:`1px solid ${T.bord}`,textAlign:"center"}}>
+          <div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:".1em",marginBottom:4}}>{l}</div>
+          <div style={{fontSize:16,fontWeight:800,color:c}}>{v}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{fontSize:13,color:T.sub,lineHeight:1.6}}>
+      Le widget se rafraîchit automatiquement si une clé Claude est configurée, sinon il utilise les flux RSS.<br/>
+      <strong style={{color:"#fbbf24"}}>Hors heures ouvrables</strong> (week-end, nuits) : aucun appel API n'est déclenché.
+    </div>
+  </div>
 </div>
 );
 })()}
