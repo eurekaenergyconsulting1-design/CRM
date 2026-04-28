@@ -2664,15 +2664,28 @@ const fetchActualitesClaude = useCallback(async()=>{
 useEffect(()=>{
 if(!user||vue!=="dashboard") return;
 function isHeuresOuvrables(){const n=new Date();const j=n.getDay();const h=n.getHours();return j>=1&&j<=5&&h>=8&&h<17;}
-const fetchActu=()=>{if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});}else fetchNews();};
-// Auto-fetch immédiat si données > 60 min ou absentes
-const tsMs=parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
+const fetchActu=async()=>{
+  if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});return;}
+  // Sans clé Claude → lire le briefing depuis Supabase avant de tomber sur le RSS
+  if(window.db&&window.db.ready){
+    try{
+      const rows=await window.db.select('config','*','key=eq.news_data');
+      if(rows&&rows[0]?.value){
+        const d=typeof rows[0].value==='string'?JSON.parse(rows[0].value):rows[0].value;
+        if(d&&d._ts&&(Date.now()-d._ts<60*60*1000)){setNewsData(d);setNewsLastFetch(d.date||'');return;}
+      }
+    }catch(e){}
+  }
+  fetchNews();
+};
+// Auto-fetch immédiat si données > 60 min ou absentes (utiliser _ts Supabase en priorité)
+const tsMs=newsData?._ts||parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
 const tooOld=!tsMs||(Date.now()-tsMs>60*60*1000);
 if(!newsData||tooOld) fetchActu();
 // Vérification chaque minute — fetch si lun-ven 8h-17h et 60 min écoulées
 newsAutoRefRef.current=setInterval(()=>{
   if(!isHeuresOuvrables()) return;
-  const tsMs2=parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
+  const tsMs2=newsData?._ts||parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
   if(tsMs2&&(Date.now()-tsMs2<60*60*1000)) return;
   fetchActu();
 },60000);
