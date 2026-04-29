@@ -1385,7 +1385,7 @@ const[customNewsRef,setCustomNewsRef]=useState({
     {titre:"Réglementation CRE",detail:"Les révisions du TURPE et des TRV impactent la compétitivité des offres alternatives. Les entreprises sous TRV comparent avec le marché libre.",impact:"opportunité",source:"CRE"},
   ]
 });
-const[newsLoading,setNewsLoading]=useState(false);
+const[newsLoading,setNewsLoading]=useState(true);
 const[menuMobileOuvert,setMenuMobileOuvert]=useState(false);
 const[emailTemplates,setEmailTemplates]=useState(EMAIL_TEMPLATES);
 const[emailEditId,setEmailEditId]=useState(null);
@@ -1403,7 +1403,7 @@ const ACTU_FEEDS_DEF=[
 const[msgDashboard,setMsgDashboard]=useState("");
 const[motsRisqueState,setMotsRisqueState]=useState(()=>[...["hausse","risque","coupure","pénurie","tension","alerte","chute","crise","vol","fraude","rupture","instabilité","défaillance","contentieux"]]);
 const [actuFeeds,setActuFeeds]=useState(()=>{try{const s=localStorage.getItem('eureka_actu_feeds');return s?JSON.parse(s):ACTU_FEEDS_DEF;}catch(e){return ACTU_FEEDS_DEF;}});
-const [newsLastFetch,setNewsLastFetch]=useState(()=>localStorage.getItem('eureka_news_ts')||null);
+const [newsLastFetch,setNewsLastFetch]=useState(null);
 const [poolMassAgent,setPoolMassAgent]=useState(""); // pour la réattribution en masse (pool dossiers)
 const [poolSelection,setPoolSelection]=useState([]); // ids sélectionnés dans le pool
 const [calRechDossier, setCalRechDossier] = useState("");
@@ -2179,7 +2179,7 @@ async function load(){
     }
     // Charger config (msg_dashboard, custom_news_ref)
     try{
-      const cfgData=await window.db.select('config',{});
+      const cfgData=await window.db.select('config',{order:'key'});
       if(cfgData&&cfgData.length){
         const cfgMap={};cfgData.forEach(c=>{cfgMap[c.key]=c.value;});
         if(cfgMap['msg_dashboard']!==undefined) setMsgDashboard(cfgMap['msg_dashboard']);
@@ -2189,10 +2189,11 @@ async function load(){
         // ─── Scores formation — Supabase (source de vérité) ───────────────────
         if(cfgMap['formation_scores']){try{setScores(JSON.parse(cfgMap['formation_scores']));}catch(e){}}
         if(cfgMap['claude_api_key']){const k=String(cfgMap['claude_api_key']||'');if(k&&k.startsWith('sk-ant-')){setClaudeKey(k);setClaudeKeyInput(k);try{localStorage.setItem('eureka_claude_key',k);}catch(e){}}}
-        if(cfgMap['news_data']){try{const d=typeof cfgMap['news_data']==='string'?JSON.parse(cfgMap['news_data']):cfgMap['news_data'];if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);try{localStorage.setItem('eureka_news_cache',JSON.stringify(d));localStorage.setItem('eureka_news_ts',d.date);if(d._ts)localStorage.setItem('eureka_news_ts_ms',String(d._ts));}catch(e){}}}catch(e){}}
+        if(cfgMap['news_data']){try{const d=typeof cfgMap['news_data']==='string'?JSON.parse(cfgMap['news_data']):cfgMap['news_data'];if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);}}catch(e){}}
         if(cfgMap['arg_du_jour']){try{const a=typeof cfgMap['arg_du_jour']==='string'?JSON.parse(cfgMap['arg_du_jour']):cfgMap['arg_du_jour'];if(a&&a.date&&a.value){setArgDuJour(a);argDuJourRef.current=a;}}catch(e){}}
       }
     }catch(e){}
+    setNewsLoading(false); // toujours terminer le spinner après le chargement config
     setSupaStatus('ok');
     setSupaErrMsg(null);
   }catch(e){
@@ -2589,12 +2590,12 @@ const fetchActualitesClaude = useCallback(async()=>{
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`Erreur ${resp.status}`);}
     // Re-lire depuis Supabase pour afficher le dernier briefing (généré ou déjà en cache)
     if(window.db&&window.db.ready){
-      const rows=await window.db.select('config',{});
+      const rows=await window.db.select('config',{order:'key'});
       if(rows&&rows.length){
         const map={};rows.forEach(c=>{map[c.key]=c.value;});
         if(map['news_data']){
           const d=typeof map['news_data']==='string'?JSON.parse(map['news_data']):map['news_data'];
-          if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);try{localStorage.setItem('eureka_news_cache',JSON.stringify(d));localStorage.setItem('eureka_news_ts',d.date);if(d._ts)localStorage.setItem('eureka_news_ts_ms',String(d._ts));}catch(e){}}
+          if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);}
         }
         if(map['arg_du_jour']){try{const a=typeof map['arg_du_jour']==='string'?JSON.parse(map['arg_du_jour']):map['arg_du_jour'];if(a&&a.date&&a.value){argDuJourRef.current=a;setArgDuJour(a);}}catch(e){}}
       }
@@ -2609,39 +2610,30 @@ const fetchActualitesClaude = useCallback(async()=>{
   }
 },[claudeKey]);
 
+// ─── Chargement et rafraîchissement des actualités depuis Supabase uniquement ───
+async function chargerBriefingSupabase(){
+  if(!newsData) setNewsLoading(true); // spinner seulement si aucune donnée affichée
+  try{
+    let tentatives=0;
+    while((!window.db||!window.db.ready)&&tentatives<10){await new Promise(r=>setTimeout(r,500));tentatives++;}
+    if(!window.db||!window.db.ready){setNewsLoading(false);return;}
+    const rows=await window.db.select('config',{order:'key'});
+    if(!rows||!rows.length){setNewsLoading(false);return;}
+    const map={};rows.forEach((c)=>{map[c.key]=c.value;});
+    if(map['news_data']){
+      try{const d=typeof map['news_data']==='string'?JSON.parse(map['news_data']):map['news_data'];if(d&&d.date){setNewsData(d);setNewsLastFetch(d.date);}}catch(e){}
+    }
+    if(map['arg_du_jour']){try{const a=typeof map['arg_du_jour']==='string'?JSON.parse(map['arg_du_jour']):map['arg_du_jour'];if(a&&a.date&&a.value){argDuJourRef.current=a;setArgDuJour(a);}}catch(e){}}
+  }catch(e){}
+  setNewsLoading(false);
+}
 useEffect(()=>{
 if(!user||vue!=="dashboard") return;
-function isHeuresOuvrables(){const n=new Date();const j=n.getDay();const h=n.getHours();return j>=1&&j<=5&&h>=6&&h<17;}
-const fetchActu=async()=>{
-  if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});return;}
-  // Sans clé Claude → lire le briefing depuis Supabase avant de tomber sur le RSS
-  if(window.db&&window.db.ready){
-    try{
-      const rows=await window.db.select('config',{});
-      if(rows&&rows.length){
-        const map={};rows.forEach(c=>{map[c.key]=c.value;});
-        if(map['news_data']){
-          const d=typeof map['news_data']==='string'?JSON.parse(map['news_data']):map['news_data'];
-          if(d&&d._ts&&(Date.now()-d._ts<60*60*1000)){setNewsData(d);setNewsLastFetch(d.date||'');return;}
-        }
-      }
-    }catch(e){}
-  }
-  fetchNews();
-};
-// Auto-fetch immédiat si données > 60 min ou absentes (utiliser _ts Supabase en priorité)
-const tsMs=newsData?._ts||parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
-const tooOld=!tsMs||(Date.now()-tsMs>60*60*1000);
-if(!newsData||tooOld) fetchActu();
-// Vérification chaque minute — fetch si lun-ven 8h-17h et 60 min écoulées
-newsAutoRefRef.current=setInterval(()=>{
-  if(!isHeuresOuvrables()) return;
-  const tsMs2=newsData?._ts||parseInt(localStorage.getItem('eureka_news_ts_ms')||'0');
-  if(tsMs2&&(Date.now()-tsMs2<60*60*1000)) return;
-  fetchActu();
-},60000);
+chargerBriefingSupabase();
+// Rafraîchissement toutes les 15 min pour récupérer le briefing du cron (7h et 13h)
+newsAutoRefRef.current=setInterval(chargerBriefingSupabase,15*60*1000);
 return()=>clearInterval(newsAutoRefRef.current);
-},[user,vue,fetchNews,fetchActualitesClaude,claudeKey]);
+},[user,vue]);
 // ─── FILTRAGE DES DONNÉES SELON RÔLE ───────────────
 const vueProspects = useMemo(()=>user?.role==="agent"?prospects.filter(p=>p.agentId===user.agentId):prospects,[prospects,user]);
 // ─── AGENTS COMPLETS : fusionne agents + utilisateurs agents ───────
@@ -3654,15 +3646,19 @@ setShowRapportSemaine(true);
 </div>
 </div>
 <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-{newsOuvert&&<button className="btn-primary" style={{fontSize:13,padding:"6px 12px"}} onClick={e=>{e.stopPropagation();if(claudeKey){fetchActualitesClaude().then(ok=>{if(!ok)fetchNews();});}else fetchNews();}}>⟳ {claudeKey?"IA":"RSS"}</button>}
+{newsOuvert&&<button className="btn-ghost" style={{fontSize:13,padding:"6px 12px"}} onClick={e=>{e.stopPropagation();chargerBriefingSupabase();}}>↻</button>}
 <span style={{fontSize:20,color:T.sub,transition:".3s",transform:newsOuvert?"rotate(0)":"rotate(-90deg)",display:"inline-block"}}>▾</span>
 </div>
 </div>
 {newsOuvert&&<div style={{padding:isMobile?"8px 12px":"12px 16px"}}>
-{!newsData&&!newsLoading&&<div style={{textAlign:"center",padding:20,color:T.sub,fontSize:15}}>Chargement automatique en cours...</div>}
+{!newsData&&!newsLoading&&<div style={{textAlign:"center",padding:20}}>
+  <div style={{fontSize:15,color:T.sub,marginBottom:4}}>Briefing disponible à 7h et 13h</div>
+  <div style={{fontSize:13,color:T.muted,marginBottom:10}}>Généré automatiquement — prochain à 7h ou 13h</div>
+  <button className="btn-ghost" style={{fontSize:13,padding:"6px 16px"}} onClick={()=>chargerBriefingSupabase()}>↻ Recharger depuis Supabase</button>
+</div>}
 {newsLoading&&<div style={{textAlign:"center",padding:20}}>
-<div style={{fontSize:15,color:JVc,fontWeight:600}}>{claudeKey?"🤖 Génération du briefing en cours…":"↻ Chargement du briefing depuis Supabase..."}</div>
-<div style={{fontSize:14,color:T.sub,marginTop:4}}>{claudeKey?"Claude Sonnet + Web Search via Supabase — 10 à 20 secondes":"Lecture des données partagées — quelques secondes"}</div>
+<div style={{fontSize:15,color:JVc,fontWeight:600}}>↻ Chargement du briefing…</div>
+<div style={{fontSize:14,color:T.sub,marginTop:4}}>Lecture depuis Supabase — quelques secondes</div>
 </div>}
 {newsData&&!newsLoading&&<div className="fade-in">
 <div style={{fontSize:14,color:T.text,marginBottom:14,padding:"8px 14px",background:T.bg3,borderRadius:8,borderLeft:`3px solid ${newsData.isLive?"#4ade80":"#fbbf24"}`}}>{newsData.resume}</div>
@@ -7612,7 +7608,7 @@ async function exporterSauvegardeLocale(){
       window.db.select('crm_users'),
       window.db.select('objectifs'),
       window.db.select('journal'),
-      window.db.select('config'),
+      window.db.select('config',{order:'key'}),
     ]);
     const backup={
       version:"1.0",
