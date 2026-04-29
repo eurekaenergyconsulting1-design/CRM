@@ -411,12 +411,14 @@ function supaToAgent(r){
 function userToSupa(u){
   return{id:u.id,login:u.login||null,mdp:u.mdp||null,nom:u.nom||null,
     prenom:u.prenom||null,role:u.role||"agent",agent_id:u.agentId||null,
-    statut:u.statut||"agent_confirme",mdp_change_at:u.mdpChangeAt||null};
+    statut:u.statut||"agent_confirme",mdp_change_at:u.mdpChangeAt||null,
+    email:u.email||null};
 }
 function supaToUser(r){
   return{id:r.id,login:r.login||"",mdp:r.mdp||"",nom:r.nom||"",
     prenom:r.prenom||"",role:r.role||"agent",agentId:r.agent_id||"",
-    statut:r.statut||"agent_confirme",mdpChangeAt:r.mdp_change_at||null};
+    statut:r.statut||"agent_confirme",mdpChangeAt:r.mdp_change_at||null,
+    email:r.email||""};
 }
 function journalToSupa(j){
   return{ts:j.ts,user_name:j.user||"",action:j.action||"",
@@ -1344,7 +1346,7 @@ const[agentVu,setAgentVu]=useState(null);
 const[modeForm,setModeForm]=useState(null);
 const[form,setForm]=useState(FV);
 const[formAgent,setFormAgent]=useState({nom:"",dateDebut:""});
-const[formUser,setFormUser]=useState({login:"",mdp:"",nom:"",prenom:"",role:"agent",agentId:"",statut:"agent_confirme",dateDebut:""});
+const[formUser,setFormUser]=useState({login:"",mdp:"",nom:"",prenom:"",role:"agent",agentId:"",statut:"agent_confirme",dateDebut:"",email:""});
 const[editMode,setEditMode]=useState(false);
 const[rech,setRech]=useState(""),[ filtreS,setFiltreS]=useState("Tous"),[ filtreT,setFiltreT]=useState("Tous"),[ filtreA,setFiltreA]=useState("Tous"),[ filtreU,setFiltreU]=useState("Tous"),[ filtreC,setFiltreC]=useState("Tous");
 const[filtreMoisSig,setFiltreMoisSig]=useState("Tous");
@@ -3686,14 +3688,24 @@ return(
 </div>
 );})}
 </div>
-<div style={{display:"grid",gridTemplateColumns:isCompact?"1fr":"1fr 1fr",gap:10}}>
+<div style={{display:"grid",gridTemplateColumns:isCompact?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
 <div style={{background:"#1a160a",border:`1px solid ${JV}44`,borderRadius:8,padding:"12px 14px"}}>
-<div style={{fontSize:13,fontWeight:700,color:JV,marginBottom:4}}>ARGUMENT DU JOUR</div>
+<div style={{fontSize:13,fontWeight:700,color:JV,marginBottom:4}}>💬 ARGUMENT DU JOUR</div>
 <div style={{fontSize:15,color:"#e8e0c0",lineHeight:1.6,fontStyle:"italic"}}>"{newsData.argument_du_jour}"</div>
 </div>
 <div style={{background:"#0a0f1f",border:`1px solid ${BR}88`,borderRadius:8,padding:"12px 14px"}}>
-<div style={{fontSize:13,fontWeight:700,color:"#60a5fa",marginBottom:4}}>CONSEIL OPÉRATIONNEL</div>
-<div style={{fontSize:15,color:"#c8d4e8",lineHeight:1.6}}>{newsData.conseil}</div>
+<div style={{fontSize:13,fontWeight:700,color:"#60a5fa",marginBottom:4}}>✅ CONSEIL OPÉRATIONNEL</div>
+<div style={{fontSize:15,color:"#c8d4e8",lineHeight:1.6}}>{newsData.conseil||"—"}</div>
+</div>
+</div>
+<div style={{display:"grid",gridTemplateColumns:isCompact?"1fr":"1fr 1fr",gap:10}}>
+<div style={{background:"#0a1525",border:"1px solid #fbbf2455",borderRadius:8,padding:"12px 14px"}}>
+<div style={{fontSize:13,fontWeight:700,color:"#fbbf24",marginBottom:6}}>⚡ BRIEFING OPÉRATIONNEL — ÉLECTRICITÉ</div>
+<div style={{fontSize:14,color:"#d4e4f4",lineHeight:1.7}}>{newsData.conseil_elec||<span style={{color:"#666",fontStyle:"italic"}}>Généré au prochain briefing (7h ou 13h)</span>}</div>
+</div>
+<div style={{background:"#0a1a0a",border:"1px solid #4ade8055",borderRadius:8,padding:"12px 14px"}}>
+<div style={{fontSize:13,fontWeight:700,color:"#4ade80",marginBottom:6}}>🔥 BRIEFING OPÉRATIONNEL — GAZ</div>
+<div style={{fontSize:14,color:"#d4f0d4",lineHeight:1.7}}>{newsData.conseil_gaz||<span style={{color:"#666",fontStyle:"italic"}}>Généré au prochain briefing (7h ou 13h)</span>}</div>
 </div>
 </div>
 </div>}
@@ -4036,6 +4048,15 @@ LISTE PROSPECTS
 <button className="btn-ghost" style={{fontSize:13,padding:"7px 14px",borderColor:(calibDebut||calibFin)?JV:undefined,color:(calibDebut||calibFin)?JV:undefined}}
 onClick={()=>setShowCalibPicker("dossiers")}>{(calibDebut||calibFin)?"Modifier calibrage":"Calibrage"}</button>
 {(calibDebut||calibFin)&&<button className="btn-ghost" style={{fontSize:13,padding:"5px 10px",color:"#f87171",borderColor:"#f8717144"}} onClick={()=>{setCalibDebut("");setCalibFin("");}}>✕ Réinitialiser</button>}
+<button className="btn-ghost" style={{fontSize:13,padding:"7px 12px"}} title="Exporter la liste filtrée en CSV" onClick={()=>{
+  const ag=id=>agentsFull.find(a=>a.id===id)?.nom||"";
+  const esc=v=>'"'+(String(v||"").replace(/"/g,'""'))+'"';
+  const cols=["Société","SIRET","Type","Statut","Agent","Ville","CP","Décideur","Tél principal","Email","Fournisseur élec","Éch. élec","Fournisseur gaz","Éch. gaz","Date prospect","Date signature","Notes"];
+  const rows=liste.map(p=>[p.societe,p.siret,p.type,p.statut,ag(p.agentId),p.ville,p.cp,p.decideur,p.telP,p.email,p.fournisseurActuel_elec,p.dateEch_elec,p.fournisseurActuel_gaz,p.dateEch_gaz,p.datePro,p.dateSig,p.notes].map(esc).join(";"));
+  const csv="﻿"+[cols.map(esc).join(";"),...rows].join("\r\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=`eureka-dossiers-${new Date().toISOString().slice(0,10)}.csv`;a.click();
+}}>⬇ CSV ({liste.length})</button>
 <button className="btn-primary" onClick={()=>{setForm({...FV,datePro:new Date().toISOString().split("T")[0],agentId:user.role==="agent"?user.agentId:""});setEditMode(false);setDoublonMsg(null);setModeForm("prospect");setVue("form");setFicheTab("societe");}}>+ Nouveau dossier</button>
 </div>
 </div>
@@ -5243,6 +5264,12 @@ return(
          <div><div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>MOT DE PASSE</div><input className="field" type="text" value={formUser.mdp} onChange={e=>setFormUser(f=>({...f,mdp:e.target.value}))}/></div>
       </div>
 
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>EMAIL (pour alertes automatiques)</div>
+        <input className="field" type="email" placeholder="agent@exemple.com" value={formUser.email||""} onChange={e=>setFormUser(f=>({...f,email:e.target.value}))}/>
+        <div style={{fontSize:12,color:GRc,marginTop:4}}>Utilisé pour envoyer les rappels par email. Optionnel.</div>
+      </div>
+
       {formUser.role==="agent"&&<div style={{marginBottom:14}}>
         <div style={{fontSize:15,color:T.sub,marginBottom:6,fontWeight:600}}>DATE DE DÉBUT</div>
         <input className="field" type="date" value={formUser.dateDebut||""} onChange={e=>setFormUser(f=>({...f,dateDebut:e.target.value}))}/>
@@ -5272,6 +5299,7 @@ return(
            if(window.db.ready){
              const u=userToSupa(updated);
              window.db.rpc('save_user',{p_id:u.id,p_login:u.login,p_mdp:u.mdp||"",p_nom:u.nom||"",p_prenom:u.prenom||"",p_role:u.role||"agent",p_agent_id:u.agent_id||null,p_statut:u.statut||"agent_confirme"}).catch(e=>setSupaErrMsg&&setSupaErrMsg("Erreur Supabase RPC: "+e.message));
+             if(updated.email!==undefined) window.db.upsert('crm_users',[{id:u.id,email:updated.email||null}]).catch(()=>{});
            }
            log("Compte modifié",formUser.login);
         } else {
@@ -5298,6 +5326,7 @@ return(
                .then(r=>{ if(r===null) setSupaErrMsg&&setSupaErrMsg("Erreur création compte — vérifiez la connexion Supabase."); })
                .catch(e=>setSupaErrMsg&&setSupaErrMsg("Erreur RPC save_user: "+e.message));
              if(nouvelAgent) window.db.upsert('agents',[agentToSupa(nouvelAgent)]).catch(e=>setSupaErrMsg("Erreur Supabase: "+e.message));
+             if(nouveau.email) window.db.upsert('crm_users',[{id:uid,email:nouveau.email}]).catch(()=>{});
            }
            log("Nouveau compte créé",formUser.login);
         }
