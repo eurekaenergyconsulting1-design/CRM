@@ -2215,12 +2215,13 @@ load();
 const refreshFromSupabase=useCallback(async function refreshFromSupabase(){
   if(!window.db.ready) return;
   try{
-    const [prosData,agData,usData,objData,rdvRefresh]=await Promise.all([
+    const [prosData,agData,usData,objData,rdvRefresh,jouRefresh]=await Promise.all([
       window.db.select('prospects',{order:'id'}),
       window.db.select('agents',{order:'id'}),
       window.db.rpc('list_users_safe'),
       window.db.select('objectifs',{order:'agent_id'}),
       window.db.select('rappels',{order:'date'}).catch(()=>null),
+      window.db.select('journal',{order:'id'}).catch(()=>null),
     ]);
     if(prosData!==null) setProspects((prosData).map(supaToProsp));
     if(agData!==null) setAgents((agData).map(supaToAgent));
@@ -2230,6 +2231,7 @@ const refreshFromSupabase=useCallback(async function refreshFromSupabase(){
     }
     if(objData!==null&&objData.length>0){const o={};objData.forEach(x=>{o[x.agent_id]=x.valeur;});setObjectifs(o);}
     if(rdvRefresh!==null&&rdvRefresh.length>=0){setRappelsPreclos(rdvRefresh.map(r=>({id:r.id,date:r.date||"",heure:r.heure||"08:00",type:r.type||"préclos",numero:r.numero||"",mail:r.mail||"",note:r.note||"",entreprise:r.entreprise||"",createdBy:r.created_by||""})));}
+    if(jouRefresh!==null&&jouRefresh.length>0){setJournal(jouRefresh.map(e=>({ts:e.ts||"",user:e.user_name||e.user||"",action:e.action||"",detail:e.detail||"",ip:e.ip||"—"})));}
     setSupaLastSync(new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
     setSupaStatus('ok');
   }catch(e){ setSupaStatus('error'); }
@@ -6619,7 +6621,6 @@ const ONGLETS=[
 {id:"listes", label:"Listes & Options"},
 {id:"emails", label:"Emails automatiques"},
 {id:"formations", label:"Formations & Quiz"},
-{id:"actualites", label:"📡 Actualités & Sources"},
 {id:"claude", label:"🤖 Claude AI"},
 {id:"supabase", label:"☁️ Supabase"},
 ];
@@ -7309,135 +7310,6 @@ return(
 })()}
 
 {/* ── Onglet Actualités & Sources ── */}
-{ongletParam==="actualites"&&(()=>{
-const saveFeeds=(newFeeds)=>{
-  setActuFeeds(newFeeds);
-  try{localStorage.setItem('eureka_actu_feeds',JSON.stringify(newFeeds));}catch(e){}
-};
-return(
-<div>
-{/* ── Message personnalisé tableau de bord ── */}
-<div className="card" style={{marginBottom:20,border:`1px solid ${JV}33`}}>
-  <div style={{fontSize:15,fontWeight:700,color:JVc,marginBottom:4}}>Message affiché sur le tableau de bord</div>
-  <div style={{fontSize:13,color:T.sub,marginBottom:10}}>Ce message apparaît sur le tableau de bord pour toute l'équipe.</div>
-  <textarea className="field" rows={3} style={{width:"100%",resize:"vertical",fontFamily:"inherit",fontSize:14}}
-    placeholder="Ex : Objectif 50 000 € — Restez mobilisés ! Bonne journée à tous."
-    value={msgDashboard}
-    onChange={e=>setMsgDashboard(e.target.value)}/>
-  <div style={{display:"flex",gap:8,marginTop:10}}>
-    <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={async()=>{
-      try{await window.db.upsert('config',[{key:'msg_dashboard',value:msgDashboard}]);}catch(err){}
-      alert("Message sauvegardé !");
-    }}>💾 Sauvegarder</button>
-    {msgDashboard&&<button className="btn-ghost" style={{fontSize:13,padding:"7px 14px",color:"#f87171"}} onClick={()=>setMsgDashboard("")}>✕ Effacer</button>}
-  </div>
-</div>
-{/* ── Saisie manuelle des actualités ── */}
-<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
-  <div>
-    <div style={{fontSize:17,fontWeight:700}}>Actualités manuelles — Marché Énergie</div>
-    <div style={{fontSize:14,color:T.sub,marginTop:4}}>Renseignez manuellement les liens d'articles à afficher dans le widget du tableau de bord.</div>
-  </div>
-  <button className="btn-primary" style={{fontSize:14}} onClick={()=>{
-    const nv={id:'f'+Date.now(),url:'',titre:''};
-    saveFeeds([...actuFeeds,nv]);
-  }}>+ Ajouter un article</button>
-</div>
-{/* Liste des articles */}
-<div style={{display:"flex",flexDirection:"column",gap:10}}>
-{actuFeeds.map((feed,i)=>(
-  <div key={feed.id||i} style={{background:T.card,border:`1px solid ${T.bord}`,borderRadius:10,padding:"14px 16px"}}>
-    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr auto",gap:10,alignItems:"center"}}>
-      <div>
-        <div style={{fontSize:12,color:T.muted,fontWeight:600,marginBottom:4}}>URL DE L'ARTICLE</div>
-        <input className="field" value={feed.url} placeholder="https://..." onChange={e=>{
-          const nv=actuFeeds.map((f,j)=>j===i?{...f,url:e.target.value}:f);
-          saveFeeds(nv);
-        }}/>
-        <div style={{fontSize:12,color:T.muted,fontWeight:600,marginTop:8,marginBottom:4}}>TITRE / DESCRIPTION</div>
-        <input className="field" value={feed.titre||feed.src||""} placeholder="Titre de l'article..." onChange={e=>{
-          const nv=actuFeeds.map((f,j)=>j===i?{...f,titre:e.target.value,src:e.target.value}:f);
-          saveFeeds(nv);
-        }}/>
-      </div>
-      <div style={{display:"flex",gap:6,alignItems:"flex-end",paddingTop:20}}>
-        {feed.url&&<a href={feed.url} target="_blank" rel="noopener noreferrer" style={{background:T.bg3,border:`1px solid ${T.bord}`,color:T.text,borderRadius:7,padding:"7px 10px",fontSize:13,textDecoration:"none",whiteSpace:"nowrap"}}>↗</a>}
-        <button className="btn-danger" style={{fontSize:13,padding:"7px 10px",whiteSpace:"nowrap"}} onClick={async()=>{
-          if(await showConfirm("Supprimer cet article ?"))
-            saveFeeds(actuFeeds.filter((_,j)=>j!==i));
-        }}>✕</button>
-      </div>
-    </div>
-  </div>
-))}
-</div>
-{actuFeeds.length===0&&<div style={{padding:32,textAlign:"center",color:T.muted,border:`1px dashed ${T.bord}`,borderRadius:10,fontSize:15}}>Aucun article. Cliquez sur "+ Ajouter un article" pour commencer.</div>}
-{/* Mots-clés risque modifiables */}
-<div className="card" style={{marginTop:20}}>
-  <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>Mots-clés détectant un risque</div>
-  <div style={{fontSize:13,color:T.sub,marginBottom:10}}>Un article contenant ces mots sera classé <strong style={{color:"#ef4444"}}>▼ Risque</strong> (fond rouge), sinon <strong style={{color:GRc}}>▲ Opportunité</strong>.</div>
-  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-    {motsRisqueState.map((m,i)=>(
-      <span key={i} style={{background:"#2a080866",border:"1px solid #ef444444",borderRadius:20,padding:"3px 10px 3px 12px",fontSize:13,color:"#ff8888",display:"inline-flex",alignItems:"center",gap:6}}>
-        {m}
-        <span style={{cursor:"pointer",color:"#f87171",fontWeight:700,lineHeight:1}} onClick={()=>setMotsRisqueState(ms=>ms.filter((_,j)=>j!==i))}>✕</span>
-      </span>
-    ))}
-  </div>
-  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-    <input id="newMotRisque" className="field" style={{flex:1,minWidth:180,fontSize:13}} placeholder="Ajouter un mot-clé risque…"
-      onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){setMotsRisqueState(ms=>[...ms,e.target.value.trim()]);e.target.value="";}}}/>
-    <button className="btn-ghost" style={{fontSize:13,padding:"7px 12px"}} onClick={()=>{
-      const inp=document.getElementById('newMotRisque');
-      if(inp&&inp.value.trim()){setMotsRisqueState(ms=>[...ms,inp.value.trim()]);inp.value="";}
-    }}>+ Ajouter</button>
-  </div>
-</div>
-{/* ── Contenu de référence (articles, argument, conseil) ── */}
-<div className="card" style={{marginTop:20,border:`1px solid ${BR}44`}}>
-  <div style={{fontSize:15,fontWeight:700,color:JVc,marginBottom:4}}>Contenu de référence — widget actualités</div>
-  <div style={{fontSize:13,color:T.sub,marginBottom:14}}>Ces textes apparaissent dans le widget. Modifiez-les librement.</div>
-  {(customNewsRef.articles||[]).map((art,i)=>(
-    <div key={i} style={{background:T.bg3,borderRadius:10,padding:"12px 14px",marginBottom:10,border:`1px solid ${T.bord}`}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-        <select className="field" style={{width:"auto",fontSize:12,padding:"4px 8px"}} value={art.impact}
-          onChange={e=>setCustomNewsRef(r=>({...r,articles:r.articles.map((a,j)=>j===i?{...a,impact:e.target.value}:a)}))}>
-          <option value="opportunité">▲ Opportunité</option>
-          <option value="risque">▼ Risque</option>
-        </select>
-        <span style={{fontSize:11,fontWeight:700,color:T.muted}}>Article {i+1}</span>
-        <button style={{marginLeft:"auto",background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:16}} onClick={()=>setCustomNewsRef(r=>({...r,articles:r.articles.filter((_,j)=>j!==i)}))}>✕</button>
-      </div>
-      <input className="field" style={{fontSize:13,marginBottom:6}} placeholder="Titre..." value={art.titre}
-        onChange={e=>setCustomNewsRef(r=>({...r,articles:r.articles.map((a,j)=>j===i?{...a,titre:e.target.value}:a)}))}/>
-      <textarea className="field" rows={2} style={{fontSize:13,resize:"vertical"}} placeholder="Contenu..." value={art.detail}
-        onChange={e=>setCustomNewsRef(r=>({...r,articles:r.articles.map((a,j)=>j===i?{...a,detail:e.target.value}:a)}))}/>
-      <input className="field" style={{fontSize:12,marginTop:6}} placeholder="Source (ex: CRE, EPEX...)" value={art.source||""}
-        onChange={e=>setCustomNewsRef(r=>({...r,articles:r.articles.map((a,j)=>j===i?{...a,source:e.target.value}:a)}))}/>
-    </div>
-  ))}
-  <button className="btn-ghost" style={{fontSize:13,marginBottom:14}} onClick={()=>setCustomNewsRef(r=>({...r,articles:[...r.articles,{titre:"",detail:"",impact:"opportunité",source:""}]}))}>+ Ajouter un article</button>
-  <div style={{marginBottom:10}}>
-    <div style={{fontSize:12,color:JVc,fontWeight:700,marginBottom:4}}>ARGUMENT DU JOUR</div>
-    <textarea className="field" rows={2} style={{fontSize:13,resize:"vertical"}} value={customNewsRef.argument}
-      onChange={e=>setCustomNewsRef(r=>({...r,argument:e.target.value}))}/>
-  </div>
-  <div style={{marginBottom:12}}>
-    <div style={{fontSize:12,color:"#60a5fa",fontWeight:700,marginBottom:4}}>CONSEIL OPÉRATIONNEL</div>
-    <textarea className="field" rows={2} style={{fontSize:13,resize:"vertical"}} value={customNewsRef.conseil}
-      onChange={e=>setCustomNewsRef(r=>({...r,conseil:e.target.value}))}/>
-  </div>
-  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-    <button className="btn-primary" style={{fontSize:13,padding:"8px 18px"}} onClick={async()=>{
-      setNewsData(nd=>nd?{...nd,points:(customNewsRef.articles||[]).map(a=>({...a,date:"réf."})),argument_du_jour:customNewsRef.argument,conseil:customNewsRef.conseil}:null);
-      try{await window.db.upsert('config',[{key:'custom_news_ref',value:JSON.stringify(customNewsRef)}]);}catch(e){}
-      alert("✓ Contenu sauvegardé et appliqué au tableau de bord !");
-    }}>💾 Sauvegarder &amp; Appliquer</button>
-  </div>
-</div>
-</div>
-);
-})()}
 
 {/* ── Onglet Claude AI ── */}
 {ongletParam==="claude"&&(()=>{
@@ -7515,7 +7387,7 @@ return(
   <div className="card" style={{border:`1px solid ${BR}44`}}>
     <div style={{fontSize:15,fontWeight:700,color:JVc,marginBottom:10}}>Planification automatique</div>
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10,marginBottom:14}}>
-      {[["Jours","Lun → Ven","#60a5fa"],["Plage","8h00 — 17h00","#22c55e"],["Fréquence","1× / heure","#fbbf24"],["Coût/mois","~$0,55","#a78bfa"]].map(([l,v,c])=>(
+      {[["Jours","Tous les jours","#60a5fa"],["Horaires","7h00 et 13h00","#22c55e"],["Fréquence","2× / jour","#fbbf24"],["Coût/mois","~$0,20","#a78bfa"]].map(([l,v,c])=>(
         <div key={l} style={{background:T.bg3,borderRadius:8,padding:"10px 14px",border:`1px solid ${T.bord}`,textAlign:"center"}}>
           <div style={{fontSize:11,color:T.muted,fontWeight:700,letterSpacing:".1em",marginBottom:4}}>{l}</div>
           <div style={{fontSize:16,fontWeight:800,color:c}}>{v}</div>
@@ -7523,8 +7395,24 @@ return(
       ))}
     </div>
     <div style={{fontSize:13,color:T.sub,lineHeight:1.6}}>
-      Le widget se rafraîchit automatiquement si une clé Claude est configurée, sinon il utilise les flux RSS.<br/>
-      <strong style={{color:"#fbbf24"}}>Hors heures ouvrables</strong> (week-end, nuits) : aucun appel API n'est déclenché.
+      Le briefing est généré côté serveur (Supabase Edge Function) puis diffusé à toute l'équipe.<br/>
+      <strong style={{color:"#fbbf24"}}>Aucun appel API navigateur</strong> — chaque agent lit le même briefing depuis Supabase.
+    </div>
+  </div>
+  {/* ── Message personnalisé tableau de bord ── */}
+  <div className="card" style={{marginTop:16,border:`1px solid ${JV}33`}}>
+    <div style={{fontSize:15,fontWeight:700,color:JVc,marginBottom:4}}>Message affiché sur le tableau de bord</div>
+    <div style={{fontSize:13,color:T.sub,marginBottom:10}}>Ce message apparaît en haut du tableau de bord pour toute l'équipe.</div>
+    <textarea className="field" rows={3} style={{width:"100%",resize:"vertical",fontFamily:"inherit",fontSize:14}}
+      placeholder="Ex : Objectif 50 000 € — Restez mobilisés ! Bonne journée à tous."
+      value={msgDashboard}
+      onChange={e=>setMsgDashboard(e.target.value)}/>
+    <div style={{display:"flex",gap:8,marginTop:10}}>
+      <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={async()=>{
+        try{await window.db.upsert('config',[{key:'msg_dashboard',value:msgDashboard}]);}catch(err){}
+        alert("Message sauvegardé !");
+      }}>💾 Sauvegarder</button>
+      {msgDashboard&&<button className="btn-ghost" style={{fontSize:13,padding:"7px 14px",color:"#f87171"}} onClick={async()=>{setMsgDashboard("");try{await window.db.upsert('config',[{key:'msg_dashboard',value:""}]);}catch(e){}}}>✕ Effacer</button>}
     </div>
   </div>
 </div>
